@@ -10,7 +10,6 @@ client/dist
 !.env.example
 
 .vercel
-.claude/settings.local.json
 
 # Supabase CLI local state
 supabase/.branches
