@@ -1,16 +1,6 @@
 {
-  "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
   "framework": "vite",
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "server/index.ts"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
-  ]
-} 
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

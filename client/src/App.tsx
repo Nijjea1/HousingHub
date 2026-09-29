@@ -11,8 +11,7 @@ import Listings from './pages/Listings';
 import GuidelinesAndFAQ from './pages/GuidelinesAndFAQ';
 import About from './pages/About';
 import Map from './pages/Map';
-import SignIn from './pages/SignIn';
-import SignUp from './pages/SignUp';
+import Auth from './pages/Auth';
 import Profile from './pages/Profile';
 import MyListings from './pages/MyListings';
 import CreateListing from './pages/CreateListing';
@@ -40,8 +39,8 @@ const Router: React.FC = () => {
       <Route path="/resources" component={GuidelinesAndFAQ} />
       <Route path="/about" component={About} />
       <Route path="/map" component={Map} />
-      <Route path="/signin" component={SignIn} />
-      <Route path="/signup" component={SignUp} />
+      <Route path="/signin">{() => <Auth initialMode="signin" />}</Route>
+      <Route path="/signup">{() => <Auth initialMode="signup" />}</Route>
       <Route path="/profile" component={Profile} />
       <Route path="/profile/my-listings" component={MyListings} />
       <Route path="/create-listing" component={CreateListing} />
@@ -75,7 +74,7 @@ const AppContent: React.FC = () => {
         </main>
         <Footer />
       </div>
-      <Toaster />
+      <Toaster position="top-right" />
     </FavoritesProvider>
   );
 };

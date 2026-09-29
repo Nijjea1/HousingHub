@@ -4,8 +4,12 @@ import { motion } from 'framer-motion';
 import logo from '@/assets/logo.svg';
 import { useAuth } from '@/contexts/AuthContext';
 
-const Auth = () => {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+interface AuthProps {
+  initialMode?: 'signin' | 'signup';
+}
+
+const Auth = ({ initialMode = 'signin' }: AuthProps) => {
+  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   // Shared
   const [, setLocation] = useLocation();
   const { signIn, signUp } = useAuth();

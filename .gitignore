@@ -1,4 +1,17 @@
 node_modules
-node_modules
+dist
+client/dist
+*.log
+*.local
+.DS_Store
+
 .env
+.env.*
+!.env.example
+
 .vercel
+.claude/settings.local.json
+
+# Supabase CLI local state
+supabase/.branches
+supabase/.temp
