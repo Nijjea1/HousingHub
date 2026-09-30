@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import { useListings } from '@/hooks/use-listings';
+import { useListing } from '@/hooks/use-listings';
 import CreateListingForm from '@/components/listings/CreateListingForm';
 import { toast } from 'sonner';
 
@@ -9,10 +9,7 @@ const EditListing = () => {
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const { listings } = useListings();
-  const [loading, setLoading] = useState(true);
-
-  const listing = listings?.find(l => l.id === id);
+  const { data: listing, isLoading } = useListing(id);
 
   useEffect(() => {
     if (!user) {
@@ -20,23 +17,17 @@ const EditListing = () => {
       return;
     }
 
-    if (!loading && !listing) {
+    if (!isLoading && !listing) {
       toast.error('Listing not found');
       setLocation('/profile/my-listings');
     }
-  }, [user, listing, loading, setLocation]);
-
-  useEffect(() => {
-    if (listing) {
-      setLoading(false);
-    }
-  }, [listing]);
+  }, [user, listing, isLoading, setLocation]);
 
   if (!user) {
     return null;
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -48,7 +39,7 @@ const EditListing = () => {
     return null;
   }
 
-  if (listing.user_id !== user.id) {
+  if (listing.userId !== user.id) {
     toast.error('You do not have permission to edit this listing');
     setLocation('/profile/my-listings');
     return null;

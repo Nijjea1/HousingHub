@@ -1,29 +1,38 @@
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import { useListings } from '@/hooks/use-listings';
+import { useListingMutations } from '@/hooks/use-listings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Listing } from '@/lib/data';
-import { uploadImage, getImageUrl } from '@/lib/storage';
-
-const propertyTypes = ['Apartment', 'House', 'Dormitory', 'Studio'] as const;
-const amenitiesList = ['WiFi', 'Laundry', 'Furnished', 'Parking', 'Pets Allowed', 'Gym', 'Pool', 'Security'];
+import {
+  AMENITIES,
+  listingInputSchema,
+  PROPERTY_TYPES,
+  PROPERTY_TYPE_LABELS,
+  PROVINCES,
+  type Listing,
+  type PropertyType,
+  type Province,
+} from '@shared/schema';
+import { LISTING_IMAGES_BUCKET, uploadImage, validateImage } from '@/lib/storage';
 
 type FormData = {
   title: string;
   description: string;
   price: string;
-  type: typeof propertyTypes[number];
+  type: PropertyType;
   bedrooms: string;
   bathrooms: string;
   squareFeet: string;
   address: string;
-  location: string;
+  neighborhood: string;
+  city: string;
+  province: Province;
+  postalCode: string;
   amenities: string[];
   images: File[];
   availableFrom: string;
@@ -41,17 +50,20 @@ interface CreateListingFormProps {
 const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormProps) => {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-  const { createListing, updateListing } = useListings();
+  const { createListing, updateListing } = useListingMutations();
   const [form, setForm] = useState<FormData>({
     title: initialData?.title || '',
     description: initialData?.description || '',
     price: initialData?.price?.toString() || '',
-    type: (initialData?.type as typeof propertyTypes[number]) || 'Apartment',
+    type: initialData?.propertyType || 'apartment',
     bedrooms: initialData?.bedrooms?.toString() || '',
     bathrooms: initialData?.bathrooms?.toString() || '',
     squareFeet: initialData?.squareFeet?.toString() || '',
     address: initialData?.address || '',
-    location: initialData?.location || '',
+    neighborhood: initialData?.neighborhood || '',
+    city: initialData?.city || '',
+    province: initialData?.province || 'ON',
+    postalCode: initialData?.postalCode || '',
     amenities: initialData?.amenities || [],
     images: [],
     availableFrom: initialData?.availableFrom || '',
@@ -92,6 +104,8 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
     }
   };
 
+  const toNumberOrNull = (value: string) => (value.trim() === '' ? null : Number(value));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
@@ -99,73 +113,68 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
       return;
     }
 
-    // Validate required fields
-    const requiredFields = ['title', 'price', 'type', 'bedrooms', 'bathrooms', 'address', 'location'];
-    const missingFields = requiredFields.filter(field => !form[field as keyof FormData]);
-    
-    if (missingFields.length > 0) {
-      toast.error(`Please fill in all required fields: ${missingFields.join(', ')}`);
-      return;
-    }
-
-    // Validate numeric fields
-    const numericFields = ['price', 'bedrooms', 'bathrooms', 'squareFeet'];
-    const invalidFields = numericFields.filter(field => {
-      const value = form[field as keyof FormData];
-      return value && isNaN(Number(value));
-    });
-
-    if (invalidFields.length > 0) {
-      toast.error(`Invalid numeric values in: ${invalidFields.join(', ')}`);
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      // Upload images to Supabase Storage
-      let imageUrls: string[] = [];
+      // Upload any newly selected images, keeping existing ones when editing
+      let images = initialData?.images ?? [];
       if (form.images.length > 0) {
+        images = [];
         for (const file of form.images) {
-          const path = `public/${user?.id}/${Date.now()}-${file.name}`;
-          await uploadImage(file, 'listing-images', path);
-          const publicUrl = getImageUrl('listing-images', path);
-          imageUrls.push(publicUrl);
+          const invalid = validateImage(file, LISTING_IMAGES_BUCKET);
+          if (invalid) throw new Error(invalid);
+          images.push(await uploadImage(file, LISTING_IMAGES_BUCKET, user.id));
         }
       }
 
-      // Insert listing into Supabase
-      const listingData = {
+      // Validate against the shared schema, the same rules the server uses
+      const parsed = listingInputSchema.safeParse({
         title: form.title,
         description: form.description,
-        price: parseFloat(form.price),
-        type: form.type,
-        bedrooms: parseInt(form.bedrooms),
-        bathrooms: parseFloat(form.bathrooms),
-        squareFeet: form.squareFeet ? parseInt(form.squareFeet) : 0,
+        detailedDescription: null,
+        price: toNumberOrNull(form.price),
+        propertyType: form.type,
+        bedrooms: toNumberOrNull(form.bedrooms),
+        bathrooms: toNumberOrNull(form.bathrooms),
+        squareFeet: toNumberOrNull(form.squareFeet),
         address: form.address,
-        location: form.location,
+        neighborhood: form.neighborhood || null,
+        city: form.city,
+        province: form.province,
+        postalCode: form.postalCode,
+        universityId: initialData?.universityId ?? null,
+        latitude: initialData?.latitude ?? null,
+        longitude: initialData?.longitude ?? null,
         amenities: form.amenities,
-        imageUrl: imageUrls[0] || initialData?.imageUrl || '',
-        additionalImages: imageUrls.length > 0 ? imageUrls.slice(1) : initialData?.additionalImages || [],
-        availableFrom: form.availableFrom || undefined,
-        leaseTerm: form.leaseTerm || undefined,
+        images,
+        utilitiesIncluded: form.utilitiesIncluded
+          ? form.utilitiesIncluded.split(',').map(s => s.trim()).filter(Boolean)
+          : [],
+        nearbyPlaces: initialData?.nearbyPlaces ?? [],
+        isAvailable: initialData?.isAvailable ?? true,
+        availableFrom: form.availableFrom || null,
+        leaseTerm: form.leaseTerm || null,
         petsAllowed: form.petsAllowed,
         furnished: form.furnished,
-        utilitiesIncluded: form.utilitiesIncluded ? form.utilitiesIncluded.split(',').map(s => s.trim()) : [],
-        user_id: user?.id,
-      } satisfies Omit<Listing, 'id' | 'createdAt' | 'updatedAt'>;
+        distanceFromCampus: initialData?.distanceFromCampus ?? null,
+      });
+
+      if (!parsed.success) {
+        throw new Error(parsed.error.issues[0]?.message ?? 'Please check the form and try again');
+      }
 
       if (mode === 'edit' && initialData?.id) {
-        await updateListing.mutateAsync({ id: initialData.id, ...listingData });
+        await updateListing.mutateAsync({ id: initialData.id, input: parsed.data });
         toast.success('Listing updated successfully');
       } else {
-        await createListing.mutateAsync(listingData);
+        await createListing.mutateAsync({ userId: user.id, input: parsed.data });
         toast.success('Listing created successfully');
       }
       setLocation('/profile/my-listings');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create listing');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save listing';
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -174,7 +183,7 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
   return (
     <div className="container mx-auto px-4 py-8">
       <form className="space-y-6 bg-white p-8 rounded-xl shadow-lg max-w-2xl mx-auto mt-8" onSubmit={handleSubmit}>
-        <h2 className="text-2xl font-bold mb-4">Create a New Listing</h2>
+        <h2 className="text-2xl font-bold mb-4">{mode === 'edit' ? 'Edit listing' : 'Create a new listing'}</h2>
         {error && <div className="text-red-600 text-sm">{error}</div>}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -186,31 +195,31 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
             <Input name="price" type="number" value={form.price} onChange={handleChange} required min="0" step="0.01" placeholder="850" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Property type</label>
             <Select
               value={form.type}
-              onValueChange={(value: typeof propertyTypes[number]) => setForm(prev => ({ ...prev, type: value }))}
+              onValueChange={(value: PropertyType) => setForm(prev => ({ ...prev, type: value }))}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select property type" />
               </SelectTrigger>
               <SelectContent>
-                {propertyTypes.map(type => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                {PROPERTY_TYPES.map(type => (
+                  <SelectItem key={type} value={type}>{PROPERTY_TYPE_LABELS[type]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Bedrooms</label>
-            <Input name="bedrooms" type="number" value={form.bedrooms} onChange={handleChange} required min="1" placeholder="2" />
+            <Input name="bedrooms" type="number" value={form.bedrooms} onChange={handleChange} required min="0" placeholder="2" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Bathrooms</label>
-            <Input name="bathrooms" type="number" value={form.bathrooms} onChange={handleChange} required min="0.5" step="0.5" placeholder="1.5" />
+            <Input name="bathrooms" type="number" value={form.bathrooms} onChange={handleChange} required min="0" step="0.5" placeholder="1.5" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Square Feet</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Square feet</label>
             <Input name="squareFeet" type="number" value={form.squareFeet} onChange={handleChange} min="0" placeholder="750" />
           </div>
           <div>
@@ -218,8 +227,32 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
             <Input name="address" value={form.address} onChange={handleChange} required placeholder="123 University Ave" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-            <Input name="location" value={form.location} onChange={handleChange} required placeholder="College Town" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Neighborhood</label>
+            <Input name="neighborhood" value={form.neighborhood} onChange={handleChange} placeholder="Westdale" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+            <Input name="city" value={form.city} onChange={handleChange} required placeholder="Hamilton" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Province</label>
+            <Select
+              value={form.province}
+              onValueChange={(value: Province) => setForm(prev => ({ ...prev, province: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select province" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(PROVINCES).map(([code, name]) => (
+                  <SelectItem key={code} value={code}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Postal code</label>
+            <Input name="postalCode" value={form.postalCode} onChange={handleChange} required placeholder="L8S 1C7" />
           </div>
         </div>
         <div>
@@ -238,7 +271,7 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Amenities</label>
           <div className="flex flex-wrap gap-2">
-            {amenitiesList.map(amenity => (
+            {AMENITIES.map(amenity => (
               <label key={amenity} className="flex items-center gap-1">
                 <input
                   type="checkbox"
@@ -252,17 +285,17 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Available From</label>
+            <label className="block text-sm font-medium mb-1">Available from</label>
             <Input name="availableFrom" type="date" value={form.availableFrom} onChange={handleChange} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Lease Term</label>
+            <label className="block text-sm font-medium mb-1">Lease term</label>
             <Input name="leaseTerm" value={form.leaseTerm} onChange={handleChange} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Pets Allowed</label>
+            <label className="block text-sm font-medium mb-1">Pets allowed</label>
             <Checkbox checked={form.petsAllowed} onCheckedChange={checked => setForm(prev => ({ ...prev, petsAllowed: !!checked }))} />
           </div>
           <div>
@@ -271,15 +304,15 @@ const CreateListingForm = ({ initialData, mode = 'create' }: CreateListingFormPr
           </div>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Utilities Included (comma separated)</label>
+          <label className="block text-sm font-medium mb-1">Utilities included (comma separated)</label>
           <Input name="utilitiesIncluded" value={form.utilitiesIncluded} onChange={handleChange} />
         </div>
         <Button type="submit" disabled={loading} className="w-full mt-4">
-          {loading ? 'Creating...' : 'Create Listing'}
+          {loading ? 'Saving...' : mode === 'edit' ? 'Save changes' : 'Create listing'}
         </Button>
       </form>
     </div>
   );
 };
 
-export default CreateListingForm; 
+export default CreateListingForm;

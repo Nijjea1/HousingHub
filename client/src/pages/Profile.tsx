@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useListings } from '@/hooks/use-listings';
 import { useUserProfile } from '@/hooks/use-user-profile';
+import { PROPERTY_TYPES, type PropertyType } from '@shared/schema';
 
 interface UserPreferences {
   maxRent: number;
@@ -30,7 +31,7 @@ interface UserData {
 
 const Profile = () => {
   const { user, signOut } = useAuth();
-  const { listings } = useListings();
+  const { data: listings = [] } = useListings();
   const [activeTab, setActiveTab] = useState('saved');
   const [newCollectionName, setNewCollectionName] = useState('');
   const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
@@ -44,11 +45,12 @@ const Profile = () => {
     getFavoriteNote
   } = useFavoritesContext();
   
-  // New: useUserProfile hook
   const {
     profile,
+    preferences,
     updateProfile,
-    uploadProfileImage,
+    updatePreferences,
+    uploadAvatar,
   } = useUserProfile(user?.id);
 
   // Editable state for name and preferences
@@ -69,17 +71,17 @@ const Profile = () => {
   useEffect(() => {
     if (profile) {
       setEditForm({
-        name: profile.name || '',
-        profile_image: profile.profile_image || '',
-        maxRent: profile.preferences?.maxRent?.toString() || '',
-        housingType: (profile.preferences?.housingType || []).join(', '),
-        bedrooms: profile.preferences?.bedrooms || '',
-        lookingFor: profile.preferences?.lookingFor || '',
-        roommates: !!profile.preferences?.roommates,
+        name: profile.fullName || '',
+        profile_image: profile.avatarUrl || '',
+        maxRent: preferences?.maxRent?.toString() || '',
+        housingType: (preferences?.housingTypes || []).join(', '),
+        bedrooms: preferences?.bedrooms || '',
+        lookingFor: preferences?.lookingFor || '',
+        roommates: !!preferences?.wantsRoommates,
         imageFile: null,
       });
     }
-  }, [profile, editModalOpen]);
+  }, [profile, preferences, editModalOpen]);
 
   const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -101,24 +103,29 @@ const Profile = () => {
     setEditLoading(true);
     setEditError(null);
     try {
-      let profile_image = editForm.profile_image;
+      let avatarUrl = editForm.profile_image;
       if (editForm.imageFile) {
-        profile_image = String(await uploadProfileImage(editForm.imageFile) || '');
+        avatarUrl = await uploadAvatar(editForm.imageFile);
       }
-      await updateProfile({
-        name: editForm.name,
-        profile_image,
-        preferences: {
-          maxRent: editForm.maxRent ? parseInt(editForm.maxRent) : undefined,
-          housingType: editForm.housingType.split(',').map(s => s.trim()).filter(Boolean),
-          bedrooms: editForm.bedrooms,
-          lookingFor: editForm.lookingFor,
-          roommates: editForm.roommates,
-        }
+      await updateProfile.mutateAsync({
+        fullName: editForm.name,
+        universityId: profile?.universityId ?? null,
+        avatarUrl: avatarUrl || null,
+      });
+      const housingTypes = editForm.housingType
+        .split(',')
+        .map(s => s.trim())
+        .filter((t): t is PropertyType => (PROPERTY_TYPES as readonly string[]).includes(t));
+      await updatePreferences.mutateAsync({
+        maxRent: editForm.maxRent ? parseInt(editForm.maxRent) : null,
+        housingTypes,
+        bedrooms: editForm.bedrooms || null,
+        lookingFor: editForm.lookingFor || null,
+        wantsRoommates: editForm.roommates,
       });
       setEditModalOpen(false);
-    } catch (err: any) {
-      setEditError(err.message || 'Failed to update profile');
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
       setEditLoading(false);
     }
@@ -179,12 +186,12 @@ const Profile = () => {
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center space-x-4">
               <img
-                src={profile?.profile_image || userData.profileImage}
-                alt={profile?.name || userData.name}
+                src={profile?.avatarUrl || userData.profileImage}
+                alt={profile?.fullName || userData.name}
                 className="h-16 w-16 rounded-full object-cover"
               />
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">{profile?.name || userData.name}</h2>
+                <h2 className="text-xl font-semibold text-gray-900">{profile?.fullName || userData.name}</h2>
                 <p className="text-gray-500">{userData.email}</p>
               </div>
             </div>
@@ -217,11 +224,11 @@ const Profile = () => {
           <div className="bg-white rounded-xl shadow-sm p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Preferences</h3>
             <ul className="space-y-2">
-              <li><span className="text-gray-500">Maximum Rent:</span> <span className="font-medium">{profile?.preferences?.maxRent ? `$${profile.preferences.maxRent}` : 'Not set'}</span></li>
-              <li><span className="text-gray-500">Housing Type:</span> <span className="font-medium">{Array.isArray(profile?.preferences?.housingType) && profile.preferences.housingType.length > 0 ? profile.preferences.housingType.join(', ') : 'Not set'}</span></li>
-              <li><span className="text-gray-500">Bedrooms:</span> <span className="font-medium">{profile?.preferences?.bedrooms || 'Not set'}</span></li>
-              <li><span className="text-gray-500">Looking For:</span> <span className="font-medium">{profile?.preferences?.lookingFor || 'Not set'}</span></li>
-              <li><span className="text-gray-500">Open to Roommates:</span> <span className="font-medium">{profile?.preferences?.roommates === true ? 'Yes' : profile?.preferences?.roommates === false ? 'No' : 'Not set'}</span></li>
+              <li><span className="text-gray-500">Maximum Rent:</span> <span className="font-medium">{preferences?.maxRent ? `$${preferences.maxRent}` : 'Not set'}</span></li>
+              <li><span className="text-gray-500">Housing Type:</span> <span className="font-medium">{preferences?.housingTypes && preferences.housingTypes.length > 0 ? preferences.housingTypes.join(', ') : 'Not set'}</span></li>
+              <li><span className="text-gray-500">Bedrooms:</span> <span className="font-medium">{preferences?.bedrooms || 'Not set'}</span></li>
+              <li><span className="text-gray-500">Looking For:</span> <span className="font-medium">{preferences?.lookingFor || 'Not set'}</span></li>
+              <li><span className="text-gray-500">Open to Roommates:</span> <span className="font-medium">{preferences?.wantsRoommates === true ? 'Yes' : preferences?.wantsRoommates === false ? 'No' : 'Not set'}</span></li>
             </ul>
           </div>
         </div>

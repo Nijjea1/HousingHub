@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link } from 'wouter';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
-import { useListings } from '@/hooks/use-listings';
+import { useUserListings, useListingMutations } from '@/hooks/use-listings';
+import { PROPERTY_TYPE_LABELS } from '@shared/schema';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,19 +11,19 @@ import { toast } from 'sonner';
 
 const MyListings = () => {
   const { user } = useAuth();
-  const { listings, deleteListing } = useListings();
+  const { data: userListings = [] } = useUserListings(user?.id);
+  const { deleteListing } = useListingMutations();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'price-low' | 'price-high'>('newest');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // Filter listings by user and search query
-  const myListings = listings?.filter(listing => 
-    listing.user_id === user?.id &&
-    (searchQuery
+  // useUserListings already scopes to this user, so we only filter by the search query
+  const myListings = userListings.filter(listing =>
+    searchQuery
       ? listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         listing.description.toLowerCase().includes(searchQuery.toLowerCase())
-      : true)
-  ) || [];
+      : true
+  );
 
   // Sort listings
   const sortedListings = [...myListings].sort((a, b) => {
@@ -135,9 +136,9 @@ const MyListings = () => {
               className="bg-white rounded-lg shadow-md overflow-hidden"
             >
               <div className="relative">
-                {listing.imageUrl && (
-                  <img 
-                    src={listing.imageUrl} 
+                {listing.images[0] && (
+                  <img
+                    src={listing.images[0]}
                     alt={listing.title}
                     className="w-full h-48 object-cover"
                   />
@@ -158,7 +159,7 @@ const MyListings = () => {
                 </div>
                 <div className="absolute bottom-4 left-4">
                   <span className="px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800">
-                    {listing.type}
+                    {PROPERTY_TYPE_LABELS[listing.propertyType]}
                   </span>
                 </div>
               </div>
