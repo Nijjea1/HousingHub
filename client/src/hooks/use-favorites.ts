@@ -1,18 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { SupabaseClient } from '@supabase/supabase-js';
 import React, { createContext, useContext, ReactNode } from 'react';
-
-const typedSupabase = supabase as SupabaseClient;
-
-interface Favorite {
-  id: string;
-  userId: string;
-  listingId: string;
-  note?: string;
-  collectionName?: string;
-  createdAt: string;
-}
+import { favoriteFromRow, type FavoriteRow } from '@shared/mappers';
+import type { Favorite } from '@shared/schema';
 
 interface FavoritesContextType {
   favorites: Favorite[] | undefined;
@@ -20,7 +10,7 @@ interface FavoritesContextType {
   isFavorite: (listingId: string) => boolean;
   addFavorite: (listingId: string) => Promise<void>;
   removeFavorite: (listingId: string) => Promise<void>;
-  getFavoriteNote: (listingId: string) => string | undefined;
+  getFavoriteNote: (listingId: string) => string | null | undefined;
   addNoteToFavorite: (listingId: string, note: string) => Promise<void>;
   collections: string[];
   createCollection: (name: string) => Promise<void>;
@@ -82,27 +72,32 @@ export function useFavorites(userId: string) {
   const { data: favorites, isLoading } = useQuery({
     queryKey: ['favorites', userId],
     queryFn: async () => {
-      const { data, error } = await typedSupabase
+      const { data, error } = await supabase
         .from('favorites')
         .select('*')
-        .eq('userId', userId);
-      
+        .eq('user_id', userId);
+
       if (error) throw error;
-      return data as Favorite[];
+      return (data as FavoriteRow[]).map(favoriteFromRow);
     },
     enabled: !!userId,
   });
 
+  const requireUser = () => {
+    if (!userId) throw new Error('Sign in to save listings');
+  };
+
   const addFavorite = useMutation({
     mutationFn: async (listingId: string) => {
-      const { data, error } = await typedSupabase
+      requireUser();
+      const { data, error } = await supabase
         .from('favorites')
-        .insert([{ userId, listingId }])
+        .insert({ user_id: userId, listing_id: listingId })
         .select()
         .single();
-      
+
       if (error) throw error;
-      return data as Favorite;
+      return favoriteFromRow(data as FavoriteRow);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['favorites', userId] });
@@ -111,11 +106,12 @@ export function useFavorites(userId: string) {
 
   const removeFavorite = useMutation({
     mutationFn: async (listingId: string) => {
-      const { error } = await typedSupabase
+      requireUser();
+      const { error } = await supabase
         .from('favorites')
         .delete()
-        .eq('userId', userId)
-        .eq('listingId', listingId);
+        .eq('user_id', userId)
+        .eq('listing_id', listingId);
       
       if (error) throw error;
     },
@@ -126,11 +122,13 @@ export function useFavorites(userId: string) {
 
   const addNoteToFavorite = useMutation({
     mutationFn: async ({ listingId, note }: { listingId: string; note: string }) => {
-      const { error } = await typedSupabase
+      requireUser();
+      const { error } = await supabase
         .from('favorites')
-        .update({ note })
-        .eq('userId', userId)
-        .eq('listingId', listingId);
+        .upsert(
+          { user_id: userId, listing_id: listingId, note: note.trim() || null },
+          { onConflict: 'user_id,listing_id' }
+        );
       
       if (error) throw error;
     },
@@ -160,11 +158,13 @@ export function useFavorites(userId: string) {
       if (!collectionName.trim()) {
         throw new Error('Collection name cannot be empty');
       }
-      const { error } = await typedSupabase
+      requireUser();
+      const { error } = await supabase
         .from('favorites')
-        .update({ collectionName: collectionName.trim() })
-        .eq('userId', userId)
-        .eq('listingId', listingId);
+        .upsert(
+          { user_id: userId, listing_id: listingId, collection_name: collectionName.trim() },
+          { onConflict: 'user_id,listing_id' }
+        );
       
       if (error) throw error;
     },

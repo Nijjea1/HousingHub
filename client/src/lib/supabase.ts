@@ -1,40 +1,26 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables. Please check your .env file and Vercel environment variables.')
-  console.error('Required variables:')
-  console.error('- VITE_SUPABASE_URL')
-  console.error('- VITE_SUPABASE_ANON_KEY')
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+if (!isSupabaseConfigured) {
+  console.error(
+    'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env (see .env.example).'
+  );
 }
 
-// Create a mock client if environment variables are missing
-const mockClient = {
-  from: () => ({
-    select: () => ({
-      order: () => ({
-        data: [],
-        error: null
-      })
-    })
-  }),
-  auth: {
-    getSession: () => Promise.resolve({ data: { session: null }, error: null }),
-    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-    signUp: () => Promise.resolve({ error: new Error('Supabase not configured') }),
-    signInWithPassword: () => Promise.resolve({ error: new Error('Supabase not configured') }),
-    signOut: () => Promise.resolve({ error: new Error('Supabase not configured') })
+// With missing env vars every request fails, and pages show their error state
+// instead of silently rendering placeholder data.
+export const supabase = createClient(
+  supabaseUrl ?? 'http://supabase-not-configured.invalid',
+  supabaseAnonKey ?? 'missing-anon-key',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
   }
-}
-
-export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    })
-  : mockClient 
+);

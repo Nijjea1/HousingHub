@@ -1,73 +1,82 @@
-import { useState, useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { SupabaseClient } from '@supabase/supabase-js';
-import { uploadImage, getImageUrl } from '@/lib/storage';
+import { PROFILE_PICTURES_BUCKET, uploadImage } from '@/lib/storage';
+import {
+  preferencesFromRow,
+  preferencesToRow,
+  profileFromRow,
+  type PreferencesRow,
+  type ProfileRow,
+} from '@shared/mappers';
+import type { Preferences, Profile, ProfileUpdate } from '@shared/schema';
 
-const typedSupabase = supabase as SupabaseClient;
+const profileKey = (userId: string) => ['profile', userId] as const;
+const preferencesKey = (userId: string) => ['preferences', userId] as const;
 
-export interface UserProfile {
-  id: string;
-  email: string;
-  name: string;
-  profile_image: string;
-  preferences: {
-    maxRent?: number;
-    housingType?: string[];
-    bedrooms?: string;
-    lookingFor?: string;
-    roommates?: boolean;
-  };
+/** Public profile of any user, e.g. the landlord on a listing page. */
+export function useProfile(userId: string | undefined) {
+  return useQuery({
+    queryKey: profileKey(userId ?? ''),
+    enabled: !!userId,
+    queryFn: async (): Promise<Profile | null> => {
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId!).maybeSingle();
+      if (error) throw error;
+      return data ? profileFromRow(data as ProfileRow) : null;
+    },
+  });
 }
 
+/** The signed-in user's own profile and private preferences, with update actions. */
 export function useUserProfile(userId: string | undefined) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const profile = useProfile(userId);
 
-  useEffect(() => {
-    if (!userId) return;
-    setLoading(true);
-    typedSupabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single()
-      .then(({ data, error }) => {
-        if (error) setError(error.message);
-        else setProfile(data);
-        setLoading(false);
-      });
-  }, [userId]);
+  const preferences = useQuery({
+    queryKey: preferencesKey(userId ?? ''),
+    enabled: !!userId,
+    queryFn: async (): Promise<Preferences> => {
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .select('*')
+        .eq('user_id', userId!)
+        .maybeSingle();
+      if (error) throw error;
+      return preferencesFromRow(data as PreferencesRow | null);
+    },
+  });
 
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    if (!userId) return;
-    setLoading(true);
-    const { data, error } = await typedSupabase
-      .from('users')
-      .update(updates)
-      .eq('id', userId)
-      .select()
-      .single();
-    if (error) setError(error.message);
-    else setProfile(data);
-    setLoading(false);
-  };
+  const updateProfile = useMutation({
+    mutationFn: async (update: ProfileUpdate) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          full_name: update.fullName,
+          university_id: update.universityId,
+          avatar_url: update.avatarUrl,
+        })
+        .eq('id', userId!);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: profileKey(userId!) }),
+  });
 
-  const uploadProfileImage = async (file: File) => {
-    if (!userId) return;
-    const filePath = `${userId}/${Date.now()}_${file.name}`;
-    await uploadImage(file, 'profile-pictures', filePath);
-    const publicUrl = getImageUrl('profile-pictures', filePath);
-    await updateProfile({ profile_image: publicUrl });
-    return publicUrl;
-  };
+  const updatePreferences = useMutation({
+    mutationFn: async (prefs: Preferences) => {
+      const { error } = await supabase.from('user_preferences').upsert(preferencesToRow(userId!, prefs));
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: preferencesKey(userId!) }),
+  });
+
+  const uploadAvatar = (file: File) => uploadImage(file, PROFILE_PICTURES_BUCKET, userId!);
 
   return {
-    profile,
-    loading,
-    error,
+    profile: profile.data ?? null,
+    preferences: preferences.data ?? null,
+    isLoading: profile.isLoading || preferences.isLoading,
+    error: profile.error ?? preferences.error,
     updateProfile,
-    uploadProfileImage,
-    setProfile,
+    updatePreferences,
+    uploadAvatar,
   };
-} 
+}

@@ -1,72 +1,186 @@
 import { z } from "zod";
 
-// User Schema
-export const userSchema = z.object({
-  id: z.string().uuid(),
-  username: z.string().min(3).max(50),
-  email: z.string().email(),
-  firstName: z.string().optional(),
-  lastName: z.string().optional(),
-  phoneNumber: z.string().optional(),
-  profilePicture: z.string().url().optional(),
-  isVerified: z.boolean().default(false),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
+// The one definition of the app's data. Field names are camelCase here; the
+// database uses snake_case and shared/mappers.ts converts between the two.
 
-// Listing Schema
-export const listingSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string().min(5).max(100),
-  description: z.string().min(10).max(1000),
-  price: z.number().positive(),
-  address: z.string(),
+export const PROPERTY_TYPES = ["apartment", "house", "dormitory", "studio"] as const;
+export type PropertyType = (typeof PROPERTY_TYPES)[number];
+
+export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
+  apartment: "Apartment",
+  house: "House",
+  dormitory: "Dormitory",
+  studio: "Studio",
+};
+
+export const PROVINCES = {
+  AB: "Alberta",
+  BC: "British Columbia",
+  MB: "Manitoba",
+  NB: "New Brunswick",
+  NL: "Newfoundland and Labrador",
+  NS: "Nova Scotia",
+  NT: "Northwest Territories",
+  NU: "Nunavut",
+  ON: "Ontario",
+  PE: "Prince Edward Island",
+  QC: "Quebec",
+  SK: "Saskatchewan",
+  YT: "Yukon",
+} as const;
+export type Province = keyof typeof PROVINCES;
+const provinceCodes = Object.keys(PROVINCES) as [Province, ...Province[]];
+
+export const AMENITIES = [
+  "WiFi",
+  "Laundry",
+  "Parking",
+  "Gym",
+  "Air Conditioning",
+  "Dishwasher",
+  "Security",
+  "Bike Storage",
+] as const;
+
+export const MAX_LISTING_IMAGES = 10;
+
+/** Formats a Canadian postal code as "A1A 1A1"; returns the input unchanged if it can't. */
+export function normalizePostalCode(value: string): string {
+  const compact = value.replace(/\s+/g, "").toUpperCase();
+  return compact.length === 6 ? `${compact.slice(0, 3)} ${compact.slice(3)}` : value.trim();
+}
+
+// Universities
+
+export const universitySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  shortName: z.string(),
   city: z.string(),
-  state: z.string(),
-  zipCode: z.string(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  bedrooms: z.number().int().positive(),
-  bathrooms: z.number().positive(),
-  squareFeet: z.number().int().positive().optional(),
-  propertyType: z.enum(['apartment', 'house', 'condo', 'townhouse']),
-  amenities: z.array(z.string()).default([]),
-  images: z.array(z.string().url()).default([]),
-  isAvailable: z.boolean().default(true),
-  userId: z.string().uuid(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  province: z.enum(provinceCodes),
+  latitude: z.number(),
+  longitude: z.number(),
+  isActive: z.boolean(),
 });
+export type University = z.infer<typeof universitySchema>;
 
-// Favorite Schema
+// Listings
+
+const trimmed = (min: number, max: number, label: string) =>
+  z
+    .string()
+    .trim()
+    .min(min, `${label} must be at least ${min} characters`)
+    .max(max, `${label} must be at most ${max} characters`);
+
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullable()
+    .transform((v) => (v ? v : null));
+
+export const listingInputSchema = z.object({
+  title: trimmed(5, 100, "Title"),
+  description: trimmed(10, 1000, "Description"),
+  detailedDescription: optionalText(5000),
+  price: z.number({ invalid_type_error: "Price is required" }).positive("Price must be more than 0").max(20000),
+  propertyType: z.enum(PROPERTY_TYPES),
+  bedrooms: z.number({ invalid_type_error: "Bedrooms is required" }).int().min(0).max(20),
+  bathrooms: z
+    .number({ invalid_type_error: "Bathrooms is required" })
+    .min(0)
+    .max(20)
+    .multipleOf(0.5, "Bathrooms must be a whole or half number"),
+  squareFeet: z.number().int().positive().max(20000).nullable(),
+  address: trimmed(3, 200, "Address"),
+  neighborhood: optionalText(100),
+  city: trimmed(2, 100, "City"),
+  province: z.enum(provinceCodes),
+  postalCode: z
+    .string()
+    .transform(normalizePostalCode)
+    .pipe(z.string().regex(/^[A-Z]\d[A-Z] \d[A-Z]\d$/, "Enter a valid postal code, e.g. L8S 1C7")),
+  universityId: z.string().nullable(),
+  latitude: z.number().min(-90).max(90).nullable(),
+  longitude: z.number().min(-180).max(180).nullable(),
+  amenities: z.array(z.string().trim().min(1).max(50)).max(30),
+  images: z.array(z.string().url()).max(MAX_LISTING_IMAGES),
+  utilitiesIncluded: z.array(z.string().trim().min(1).max(50)).max(20),
+  nearbyPlaces: z.array(z.string().trim().min(1).max(100)).max(20),
+  isAvailable: z.boolean(),
+  availableFrom: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date")
+    .nullable(),
+  leaseTerm: optionalText(50),
+  petsAllowed: z.boolean(),
+  furnished: z.boolean(),
+  distanceFromCampus: optionalText(100),
+});
+export type ListingInput = z.infer<typeof listingInputSchema>;
+
+export const listingSchema = listingInputSchema.extend({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Listing = z.infer<typeof listingSchema>;
+
+// Favorites
+
 export const favoriteSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
   listingId: z.string().uuid(),
-  createdAt: z.string().datetime(),
+  note: z.string().nullable(),
+  collectionName: z.string().nullable(),
+  createdAt: z.string(),
 });
+export type Favorite = z.infer<typeof favoriteSchema>;
 
-// Message Schema
+// Profiles
+
+export const USER_ROLES = ["student", "landlord"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const profileSchema = z.object({
+  id: z.string().uuid(),
+  fullName: z.string().nullable(),
+  universityId: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+  role: z.enum(USER_ROLES),
+  createdAt: z.string(),
+});
+export type Profile = z.infer<typeof profileSchema>;
+
+export const profileUpdateSchema = z.object({
+  fullName: trimmed(1, 100, "Name"),
+  universityId: z.string().nullable(),
+  avatarUrl: z.string().url().nullable(),
+});
+export type ProfileUpdate = z.infer<typeof profileUpdateSchema>;
+
+export const preferencesSchema = z.object({
+  maxRent: z.number().int().min(0).nullable(),
+  housingTypes: z.array(z.enum(PROPERTY_TYPES)),
+  bedrooms: z.string().nullable(),
+  lookingFor: z.string().nullable(),
+  wantsRoommates: z.boolean(),
+});
+export type Preferences = z.infer<typeof preferencesSchema>;
+
+// Messages
+
 export const messageSchema = z.object({
   id: z.string().uuid(),
   senderId: z.string().uuid(),
   receiverId: z.string().uuid(),
   listingId: z.string().uuid(),
-  content: z.string().min(1).max(1000),
-  isRead: z.boolean().default(false),
-  createdAt: z.string().datetime(),
+  content: z.string().min(1).max(2000),
+  isRead: z.boolean(),
+  createdAt: z.string(),
 });
-
-// Types
-export type User = z.infer<typeof userSchema>;
-export type Listing = z.infer<typeof listingSchema>;
-export type Favorite = z.infer<typeof favoriteSchema>;
 export type Message = z.infer<typeof messageSchema>;
-
-// Database Tables
-export const tables = {
-  users: 'users',
-  listings: 'listings',
-  favorites: 'favorites',
-  messages: 'messages',
-} as const;
