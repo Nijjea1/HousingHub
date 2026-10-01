@@ -14,7 +14,7 @@ import { useFavoritesContext } from '@/hooks/use-favorites';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Listing } from '@/lib/data';
+import { PROPERTY_TYPE_LABELS, type Listing, type PropertyType } from '@shared/schema';
 
 interface ListingCardProps {
   listing: Listing;
@@ -79,21 +79,14 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
     }
   };
 
-  // Function to get badge color based on property type
-  const getBadgeColor = (type: string) => {
-    switch (type.toLowerCase()) {
-      case 'apartment':
-        return 'bg-blue-100 text-blue-800';
-      case 'house':
-        return 'bg-green-100 text-green-800';
-      case 'condo':
-        return 'bg-purple-100 text-purple-800';
-      case 'townhouse':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const badgeColor: Record<PropertyType, string> = {
+    apartment: 'bg-blue-100 text-blue-800',
+    house: 'bg-green-100 text-green-800',
+    dormitory: 'bg-purple-100 text-purple-800',
+    studio: 'bg-orange-100 text-orange-800',
   };
+  const typeLabel = PROPERTY_TYPE_LABELS[listing.propertyType] ?? listing.propertyType;
+  const location = [listing.address, listing.neighborhood, listing.city].filter(Boolean).join(', ');
 
   // Function to get icon for amenity
   const getAmenityIcon = (amenity: string) => {
@@ -119,13 +112,7 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
     }
   };
 
-  // Format bathroom display text
-  const bathroomText = (bathrooms: number | 'Shared') => {
-    if (bathrooms === 'Shared') return 'Shared bathroom';
-    if (bathrooms === 1) return '1 bathroom';
-    if (typeof bathrooms === 'number' && bathrooms % 1 === 0) return `${bathrooms} bathrooms`;
-    return `${bathrooms} bathrooms`;
-  };
+  const bathroomText = `${listing.bathrooms} ${listing.bathrooms === 1 ? 'bathroom' : 'bathrooms'}`;
 
   return (
     <motion.div
@@ -135,11 +122,17 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
       className="bg-white rounded-lg shadow-md overflow-hidden"
     >
       <div className="relative">
-        <img 
-          src={listing.imageUrl}
-          alt={listing.title}
-          className="w-full h-48 object-cover rounded-lg"
-        />
+        {listing.images[0] ? (
+          <img
+            src={listing.images[0]}
+            alt={listing.title}
+            className="w-full h-48 object-cover rounded-lg"
+          />
+        ) : (
+          <div className="w-full h-48 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">
+            <i className="fas fa-home text-4xl"></i>
+          </div>
+        )}
         <div className="absolute top-4 right-4 flex gap-2">
           <button
             onClick={toggleFavorite}
@@ -149,8 +142,8 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
           </button>
         </div>
         <div className="absolute bottom-4 left-4">
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getBadgeColor(listing.type)}`}>
-            {listing.type}
+          <span className={`px-3 py-1 rounded-full text-sm font-medium ${badgeColor[listing.propertyType] ?? 'bg-gray-100 text-gray-800'}`}>
+            {typeLabel}
           </span>
         </div>
       </div>
@@ -166,7 +159,7 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
         <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
           <span>{listing.bedrooms} {listing.bedrooms === 1 ? 'bed' : 'beds'}</span>
           <span>•</span>
-          <span>{bathroomText(listing.bathrooms)}</span>
+          <span>{bathroomText}</span>
           {listing.squareFeet && (
             <>
               <span>•</span>
@@ -206,7 +199,7 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
           <DialogHeader>
             <DialogTitle>{listing.title}</DialogTitle>
             <DialogDescription>
-              {listing.type} {listing.address ? `in ${listing.address}` : ''}
+              {typeLabel} at {location}
             </DialogDescription>
           </DialogHeader>
 
@@ -232,7 +225,8 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
                 <div>
                   <h4 className="font-medium text-gray-900">Location</h4>
                   <ul className="mt-2 space-y-2 text-sm text-gray-600">
-                    <li>{listing.address}</li>
+                    <li>{location}</li>
+                    <li>{listing.postalCode}</li>
                   </ul>
                 </div>
               </div>
@@ -259,18 +253,17 @@ const ListingCard = ({ listing, index }: ListingCardProps) => {
 
             <TabsContent value="images">
               <div className="grid grid-cols-2 gap-4">
-                {Array.isArray(listing.additionalImages) && listing.additionalImages.length > 0 && (
-                  <div className="grid grid-cols-2 gap-4">
-                    {listing.additionalImages.map((image, index) => (
-                      <img
-                        key={index}
-                        src={image}
-                        alt={`Additional ${index + 1}`}
-                        className="rounded-lg object-cover w-full h-32"
-                      />
-                    ))}
-                  </div>
+                {listing.images.length === 0 && (
+                  <p className="text-sm text-gray-500">No photos yet.</p>
                 )}
+                {listing.images.map((image, index) => (
+                  <img
+                    key={image}
+                    src={image}
+                    alt={`${listing.title}, photo ${index + 1}`}
+                    className="rounded-lg object-cover w-full h-32"
+                  />
+                ))}
               </div>
             </TabsContent>
 
