@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 // Import pages
 import Home from './pages/Home';
 import Listings from './pages/Listings';
+import ListingDetail from './pages/ListingDetail';
 import GuidelinesAndFAQ from './pages/GuidelinesAndFAQ';
 import About from './pages/About';
 import Map from './pages/Map';
@@ -36,6 +37,7 @@ const Router: React.FC = () => {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/listings" component={Listings} />
+      <Route path="/listings/:id" component={ListingDetail} />
       <Route path="/resources" component={GuidelinesAndFAQ} />
       <Route path="/about" component={About} />
       <Route path="/map" component={Map} />
