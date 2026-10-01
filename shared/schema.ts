@@ -129,6 +129,36 @@ export const listingSchema = listingInputSchema.extend({
 });
 export type Listing = z.infer<typeof listingSchema>;
 
+// Browse filters. null means "any".
+
+export const SORT_OPTIONS = ["newest", "price-low", "price-high"] as const;
+export type SortOption = (typeof SORT_OPTIONS)[number];
+
+export const listingFiltersSchema = z.object({
+  minPrice: z.number().min(0).nullable(),
+  maxPrice: z.number().min(0).nullable(),
+  minBedrooms: z.number().int().min(0).nullable(),
+  minBathrooms: z.number().min(0).nullable(),
+  propertyTypes: z.array(z.enum(PROPERTY_TYPES)),
+  amenities: z.array(z.string()),
+  furnished: z.boolean().nullable(),
+  petsAllowed: z.boolean().nullable(),
+  sortBy: z.enum(SORT_OPTIONS),
+});
+export type ListingFilters = z.infer<typeof listingFiltersSchema>;
+
+export const DEFAULT_LISTING_FILTERS: ListingFilters = {
+  minPrice: null,
+  maxPrice: null,
+  minBedrooms: null,
+  minBathrooms: null,
+  propertyTypes: [],
+  amenities: [],
+  furnished: null,
+  petsAllowed: null,
+  sortBy: "newest",
+};
+
 // Favorites
 
 export const favoriteSchema = z.object({

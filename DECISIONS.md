@@ -54,3 +54,18 @@ Tradeoff: The stand-in is not the real Supabase. It covers roles, `auth.uid()` a
 Context: Phase 1's hand-written piece (`applyFilters`) and the mappers need tests, and `node:test` can't import our TypeScript or the `@shared` alias without extra setup.
 Decision: Add `vitest@^2.1.9` as a dev dependency, brought forward from phase 4. Version 2 targets Vite 5, so it reuses our `vite@5.4.18`. `vitest.config.ts` merges `vite.config.ts` for the aliases and only collects `client/src/**/*.test.ts` and `shared/**/*.test.ts`. `npm test` runs it; database tests stay on `npm run test:db`.
 Tradeoff: Two test commands until phase 4 decides whether to fold the database suite into Vitest.
+
+## 2026-10-01: Browse filters as one pure function
+Context: Filtering lived in a `useEffect` in `Listings.tsx` against the old listing type. Bathrooms "3+" was silently ignored (`Number("3+")` is NaN) and bathrooms "1" hid 1.5-bath listings because it used exact equality.
+Decision: `ListingFilters` is defined once in `shared/schema.ts` with null meaning "any", and `applyFilters` in `shared/filters.ts` is a pure function so the phase 2 API can reuse it. Bedrooms and bathrooms are minimums ("2+"). Amenities must all match, ignoring case. Sorts are newest (default), price low to high, price high to low. Distance and move-in date are left out: the spec's phase 1 filters don't include them and distance needs phase 3 coordinates.
+Tradeoff: "Exactly 2 bedrooms" is no longer possible. Filtering runs in the browser over every listing until phase 3 moves search into Postgres.
+
+## 2026-10-01: Browse page trimmed to the spec
+Context: `Listings.tsx` fell back to mock listings on any error, and the sidebar had features outside the phase 1 spec: a distance slider in miles, saved filters in localStorage (stored in the old filter shape, so loading them would crash), and search suggestions that offered "luxury X" for any query. The search history dialog could never open.
+Decision: Errors show a message and a retry button. The page owns the filter state and the sidebar is a controlled component. Filters apply immediately with no Apply button. Removed the distance slider (phase 3), saved filters, the keyword search box, suggestions and history (natural-language search is phase 6).
+Tradeoff: No keyword search until phase 6. Saved filters would need a new design if they come back.
+
+## 2026-10-01: Listing detail from real data
+Context: `ListingDetail.tsx` read mock data with a fake 500 ms delay, showed an invented phone number, response rate and tour booking, and the route was not registered.
+Decision: `/listings/:id` uses `useListing` and shows the landlord's public profile through `useProfile`. Owners see an Edit listing button. Removed the phone, email, response rate, tour form, share button, similar listings and the message button (messaging is phase 5, viewing bookings are out of scope). Date-only values like `available_from` are parsed as local time, since `new Date("2026-09-01")` is UTC midnight and showed the day before in Ontario.
+Tradeoff: The page has no way to contact the landlord until phase 5.
