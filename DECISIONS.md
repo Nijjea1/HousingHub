@@ -49,3 +49,8 @@ Tradeoff: Existing files under `public/` still display but can't be replaced by 
 Context: We want to prove the policies block what they should, without Docker or a hosted database.
 Decision: Add `@electric-sql/pglite` (Postgres compiled to WebAssembly) as a dev dependency. `supabase/tests/rls.test.mjs` creates a small stand-in for Supabase's `auth` and `storage` schemas and roles, applies the migrations to both the legacy schema and a fresh database (twice, to prove they re-run cleanly), and runs 71 checks.
 Tradeoff: The stand-in is not the real Supabase. It covers roles, `auth.uid()` and `storage.foldername()`, but not GoTrue or PostgREST behaviour.
+
+## 2026-10-01: Vitest for unit tests
+Context: Phase 1's hand-written piece (`applyFilters`) and the mappers need tests, and `node:test` can't import our TypeScript or the `@shared` alias without extra setup.
+Decision: Add `vitest@^2.1.9` as a dev dependency, brought forward from phase 4. Version 2 targets Vite 5, so it reuses our `vite@5.4.18`. `vitest.config.ts` merges `vite.config.ts` for the aliases and only collects `client/src/**/*.test.ts` and `shared/**/*.test.ts`. `npm test` runs it; database tests stay on `npm run test:db`.
+Tradeoff: Two test commands until phase 4 decides whether to fold the database suite into Vitest.
