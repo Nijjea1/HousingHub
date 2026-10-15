@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import React, { createContext, useContext, ReactNode } from 'react';
-import { favoriteFromRow, type FavoriteRow } from '@shared/mappers';
-import type { Favorite } from '@shared/schema';
+import { favoriteFromRow, savedListingFromRow, type FavoriteRow, type ListingRow } from '@shared/mappers';
+import type { Favorite, SavedListing } from '@shared/schema';
 
 interface FavoritesContextType {
   favorites: Favorite[] | undefined;
@@ -13,8 +13,8 @@ interface FavoritesContextType {
   getFavoriteNote: (listingId: string) => string | null | undefined;
   addNoteToFavorite: (listingId: string, note: string) => Promise<void>;
   collections: string[];
-  createCollection: (name: string) => Promise<void>;
-  addToCollection: (collectionName: string, listingId: string) => Promise<void>;
+  /** Puts a saved listing in a collection, or takes it out with null. Saves the listing if it wasn't. */
+  setCollection: (listingId: string, collectionName: string | null) => Promise<void>;
 }
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
@@ -34,8 +34,7 @@ export function FavoritesProvider({ children, userId }: FavoritesProviderProps) 
     getFavoriteNote,
     addNoteToFavorite,
     collections,
-    createCollection,
-    addToCollection
+    setCollection
   } = useFavorites(userId);
   
   const value: FavoritesContextType = {
@@ -51,8 +50,7 @@ export function FavoritesProvider({ children, userId }: FavoritesProviderProps) 
     getFavoriteNote,
     addNoteToFavorite,
     collections,
-    createCollection,
-    addToCollection
+    setCollection
   };
 
   return React.createElement(FavoritesContext.Provider, { value }, children);
@@ -145,27 +143,18 @@ export function useFavorites(userId: string) {
     )
   ).sort();
 
-  const createCollection = async (name: string) => {
-    if (!name.trim()) {
-      throw new Error('Collection name cannot be empty');
-    }
-    // Collections are just tags on favorites, so no need to create them separately
-    return Promise.resolve();
-  };
-
-  const addToCollection = useMutation({
-    mutationFn: async ({ listingId, collectionName }: { listingId: string; collectionName: string }) => {
-      if (!collectionName.trim()) {
-        throw new Error('Collection name cannot be empty');
-      }
+  // Collections are tags on favorites, so a collection exists while at least one favorite carries its name.
+  const setCollection = useMutation({
+    mutationFn: async ({ listingId, collectionName }: { listingId: string; collectionName: string | null }) => {
       requireUser();
+      const name = collectionName?.trim() || null;
       const { error } = await supabase
         .from('favorites')
         .upsert(
-          { user_id: userId, listing_id: listingId, collection_name: collectionName.trim() },
+          { user_id: userId, listing_id: listingId, collection_name: name },
           { onConflict: 'user_id,listing_id' }
         );
-      
+
       if (error) throw error;
     },
     onSuccess: () => {
@@ -190,7 +179,30 @@ export function useFavorites(userId: string) {
     getFavoriteNote,
     addNoteToFavorite: (listingId: string, note: string) => addNoteToFavorite.mutateAsync({ listingId, note }),
     collections,
-    createCollection,
-    addToCollection: (collectionName: string, listingId: string) => addToCollection.mutateAsync({ listingId, collectionName }),
+    setCollection: async (listingId: string, collectionName: string | null) => {
+      await setCollection.mutateAsync({ listingId, collectionName });
+    },
   };
 } 
+/**
+ * The user's saved listings with full listing data, newest first, in one query. Includes listings
+ * that are no longer available, unlike search. Its key sits under ['favorites', userId], so every
+ * favorites change above refreshes it too.
+ */
+export function useSavedListings(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['favorites', userId ?? '', 'listings'],
+    enabled: !!userId,
+    queryFn: async (): Promise<SavedListing[]> => {
+      const { data, error } = await supabase
+        .from('favorites')
+        .select('*, listing:listings(*)')
+        .eq('user_id', userId!)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data as Array<FavoriteRow & { listing: ListingRow | null }>)
+        .map(savedListingFromRow)
+        .filter((s): s is SavedListing => s !== null);
+    },
+  });
+}
