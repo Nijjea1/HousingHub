@@ -1,63 +1,12 @@
 // Applies the Supabase migrations to PGlite (Postgres compiled to WASM) on top
 // of a minimal stand-in for Supabase's auth/storage schemas and roles, then
 // checks the row level security policies. Run with `npm run test:db`.
-import { PGlite } from '@electric-sql/pglite';
-import { uuid_ossp } from '@electric-sql/pglite/contrib/uuid_ossp';
-import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const migDir = path.join(repo, 'supabase', 'migrations');
-const migrations = fs.readdirSync(migDir).filter(f => f.endsWith('.sql')).sort()
-  .map(f => [f, fs.readFileSync(path.join(migDir, f), 'utf8')]);
-const seedPath = path.join(repo, 'supabase', 'seed.sql');
-
-const STUB = `
-create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
-create schema auth; create schema storage; create schema extensions;
-create extension if not exists pgcrypto with schema extensions;
-grant usage on schema public, auth, storage, extensions to anon, authenticated, service_role;
-alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-create table auth.users (
-  instance_id uuid, id uuid primary key, aud varchar(255), role varchar(255), email varchar(255),
-  encrypted_password varchar(255), email_confirmed_at timestamptz, raw_app_meta_data jsonb,
-  raw_user_meta_data jsonb default '{}'::jsonb, created_at timestamptz, updated_at timestamptz,
-  confirmation_token varchar(255), email_change varchar(255), email_change_token_new varchar(255),
-  recovery_token varchar(255)
-);
-create table auth.identities (
-  id uuid primary key default gen_random_uuid(), provider_id text not null, user_id uuid not null references auth.users(id) on delete cascade,
-  identity_data jsonb not null, provider text not null, last_sign_in_at timestamptz, created_at timestamptz, updated_at timestamptz,
-  unique (provider_id, provider)
-);
-grant select on auth.users to anon, authenticated;
-create function auth.uid() returns uuid language sql stable as
-  $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-create table storage.buckets (id text primary key, name text not null, public boolean default false,
-  file_size_limit bigint, allowed_mime_types text[]);
-create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets(id),
-  name text not null, owner uuid);
-alter table storage.objects enable row level security;
-grant all on storage.objects to anon, authenticated;
-create function storage.foldername(name text) returns text[] language sql immutable as
-  $$ select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
-`;
+import { as, createDb, fails, migrations, repo, seedPath } from './db.mjs';
 
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (!cond) failures++; };
-
-async function as(db, uid, sql, params) {
-  await db.exec(uid ? `set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`
-                    : `set role anon; select set_config('request.jwt.claim.sub', '', false);`);
-  try { return await db.query(sql, params); }
-  finally { await db.exec('reset role;'); }
-}
-async function fails(db, uid, sql, params) {
-  try { await as(db, uid, sql, params); return false; } catch { return true; }
-}
 
 async function applyMigrations(db, label) {
   for (const [name, sql] of migrations) {
@@ -99,6 +48,12 @@ async function rlsChecks(db, label) {
   ok(await fails(db, B, `update public.listings set province = 'CA' where id = $1`, [lid]), `${label}: province must be a Canadian province code`);
   ok(await fails(db, B, `update public.listings set postal_code = '94105' where id = $1`, [lid]), `${label}: postal code must be Canadian format`);
   ok(await fails(db, B, `update public.listings set university_id = 'nope' where id = $1`, [lid]), `${label}: university must exist`);
+  ok(await fails(db, B, `update public.listings set location = 'POINT(0 0)' where id = $1`, [lid]), `${label}: location is generated, never written`);
+  await as(db, B, `update public.listings set latitude = 43.262, longitude = -79.9106 where id = $1`, [lid]);
+  const near = await as(db, null, `select (listing).id, distance_m from public.search_listings(center_lat => 43.2609, center_lng => -79.9192, radius_m => 2000)`);
+  ok(near.rows.some(r => r.id === lid && r.distance_m > 600 && r.distance_m < 800), `${label}: anon can search by distance and gets metres back`);
+  const far = await as(db, null, `select 1 from public.search_listings(center_lat => 43.6532, center_lng => -79.3832, radius_m => 2000)`);
+  ok(far.rows.length === 0, `${label}: a listing outside the radius is not returned`);
   ok((await as(db, null, `select id from public.universities where is_active`)).rows.length >= 1, `${label}: anon can read active universities`);
   ok(await fails(db, A, `insert into public.universities (id, name, short_name, city, province, latitude, longitude) values ('x', 'X', 'X', 'X', 'ON', 0, 0)`), `${label}: users cannot add universities`);
 
@@ -106,9 +61,35 @@ async function rlsChecks(db, label) {
   ok((await as(db, C, `select * from public.favorites`)).rows.length === 0, `${label}: favorites are private`);
   ok(await fails(db, C, `insert into public.favorites (user_id, listing_id) values ($1, $2)`, [A, lid]), `${label}: cannot favorite on someone else's behalf`);
 
-  ok(await fails(db, A, `insert into public.messages (sender_id, receiver_id, listing_id, content) values ($1, $2, $3, 'hi')`, [B, A, lid]), `${label}: cannot send a message as someone else`);
-  const msg = await as(db, A, `insert into public.messages (sender_id, receiver_id, listing_id, content) values ($1, $2, $3, 'Is it available?') returning id`, [A, B, lid]);
+  const startConv = `insert into public.conversations (listing_id, student_id, landlord_id) values ($1, $2, $3) returning id`;
+  ok(await fails(db, A, startConv, [lid, A, C]), `${label}: cannot open a conversation with someone who doesn't own the listing`);
+  ok(await fails(db, A, startConv, [lid, C, B]), `${label}: cannot open a conversation on someone else's behalf`);
+  ok(await fails(db, B, startConv, [lid, B, B]), `${label}: cannot open a conversation with yourself`);
+  ok(await fails(db, null, startConv, [lid, A, B]), `${label}: anon cannot open a conversation`);
+  const cid = (await as(db, A, startConv, [lid, A, B])).rows[0].id;
+  ok(!!cid, `${label}: a student can open a conversation with the listing's owner`);
+  ok(await fails(db, A, startConv, [lid, A, B]), `${label}: one conversation per listing per student`);
+  ok((await as(db, C, `select * from public.conversations`)).rows.length === 0, `${label}: third party cannot read the conversation`);
+  ok((await as(db, B, `select * from public.conversations where id = $1`, [cid])).rows.length === 1, `${label}: landlord can read the conversation`);
+  ok(await fails(db, A, `update public.conversations set landlord_id = $1 where id = $2`, [C, cid]), `${label}: participants cannot rewrite a conversation`);
+
+  const send = `insert into public.messages (conversation_id, sender_id, receiver_id, listing_id, content) values ($1, $2, $3, $4, $5) returning id`;
+  ok(await fails(db, A, send, [cid, B, A, lid, 'hi']), `${label}: cannot send a message as someone else`);
+  ok(await fails(db, C, send, [cid, C, B, lid, 'hi']), `${label}: outsider cannot post into a conversation`);
+  ok(await fails(db, A, send, [cid, A, C, lid, 'hi']), `${label}: a message must go to the other participant`);
+  ok(await fails(db, A, `insert into public.messages (sender_id, receiver_id, listing_id, content) values ($1, $2, $3, 'hi')`, [A, B, lid]), `${label}: a message needs a conversation`);
+  const before = (await db.query(`select last_message_at from public.conversations where id = $1`, [cid])).rows[0].last_message_at;
+  const msg = await as(db, A, send, [cid, A, B, lid, 'Is it available?']);
+  const after = (await db.query(`select last_message_at from public.conversations where id = $1`, [cid])).rows[0].last_message_at;
+  ok(after >= before, `${label}: sending bumps the conversation's last_message_at`);
+  ok((await as(db, B, send, [cid, B, A, lid, 'Yes, from September'])).rows.length === 1, `${label}: the landlord can reply`);
   const mid = msg.rows[0].id;
+  const inboxA = (await as(db, A, `select * from public.my_conversations()`)).rows;
+  const inboxB = (await as(db, B, `select * from public.my_conversations()`)).rows;
+  ok(inboxA.length === 1 && inboxA[0].other_user_id === B && inboxA[0].last_message === 'Yes, from September' && inboxA[0].unread_count === 1,
+    `${label}: inbox shows the other person, the last message and the student's unread count`);
+  ok(inboxB.length === 1 && inboxB[0].other_name === 'Ava Student' && inboxB[0].unread_count === 1, `${label}: inbox shows the landlord their unread count`);
+  ok((await as(db, C, `select * from public.my_conversations()`)).rows.length === 0, `${label}: an outsider's inbox does not include the conversation`);
   ok((await as(db, C, `select * from public.messages`)).rows.length === 0, `${label}: third party cannot read messages`);
   ok((await as(db, null, `select * from public.messages`)).rows.length === 0, `${label}: anon cannot read messages`);
   ok((await as(db, B, `select * from public.messages where id = $1`, [mid])).rows.length === 1, `${label}: receiver can read the message`);
@@ -125,31 +106,50 @@ async function rlsChecks(db, label) {
   ok(await fails(db, A, `insert into storage.objects (bucket_id, name) values ('listing-images', '${B}/photo.jpg')`), `${label}: cannot upload into another user's folder`);
   ok(await fails(db, A, `insert into storage.objects (bucket_id, name) values ('listing-images', 'public/${A}/photo.jpg')`), `${label}: old "public/<id>/" path is rejected`);
 
+  await as(db, A, `insert into public.user_presence (user_id) values ($1) on conflict (user_id) do update set last_seen_at = now()`, [A]);
+  ok((await as(db, A, `select * from public.user_presence`)).rows.length === 1, `${label}: users can record when they were last seen`);
+  ok((await as(db, B, `select * from public.user_presence`)).rows.length === 0, `${label}: last seen times are private`);
+  ok(await fails(db, B, `insert into public.user_presence (user_id) values ($1)`, [C]), `${label}: cannot create someone else's last seen time`);
+  ok((await as(db, B, `update public.user_presence set last_seen_at = now() where user_id = $1 returning user_id`, [A])).rows.length === 0, `${label}: cannot change someone else's last seen time`);
+
   await db.exec(`delete from auth.users where id = '${C}'`);
   ok(true, `${label}: deleting a user works (old broken deletion trigger removed)`);
 }
 
 // Scenario 1: an existing project that was set up from the old hand-run db/schema.sql.
 {
-  const db = new PGlite({ extensions: { uuid_ossp, pgcrypto } });
-  await db.exec(STUB);
+  const db = await createDb();
   await db.exec(fs.readFileSync(path.join(repo, 'supabase', 'tests', 'fixtures', 'legacy-schema.sql'), 'utf8'));
   const legacyUser = '00000000-0000-0000-0000-0000000000ff';
   await db.exec(`insert into auth.users (id, email) values ('${legacyUser}', 'legacy@test.dev');
     insert into public.listings (title, description, price, property_type, bedrooms, bathrooms, address, city, state, zip_code, user_id)
     values ('Legacy condo', 'Old row', 1500, 'condo', 1, 1, '9 Old Rd', 'Town', 'ST', '00000', '${legacyUser}');`);
+  // Messages from before conversations existed: one about the listing, one between two people who don't own it.
+  const legacyAsker = '00000000-0000-0000-0000-0000000000fe';
+  const legacyOther = '00000000-0000-0000-0000-0000000000fd';
+  await db.exec(`insert into auth.users (id, email) values ('${legacyAsker}', 'asker@test.dev'), ('${legacyOther}', 'other@test.dev');
+    insert into public.messages (sender_id, receiver_id, listing_id, content)
+      select '${legacyAsker}', '${legacyUser}', id, 'Still available?' from public.listings where title = 'Legacy condo';
+    insert into public.messages (sender_id, receiver_id, listing_id, content)
+      select '${legacyUser}', '${legacyAsker}', id, 'Yes' from public.listings where title = 'Legacy condo';
+    insert into public.messages (sender_id, receiver_id, listing_id, content)
+      select '${legacyAsker}', '${legacyOther}', id, 'Seen this?' from public.listings where title = 'Legacy condo';`);
   await applyMigrations(db, 'upgrade');
   await applyMigrations(db, 'upgrade re-run');
   const legacy = await db.query(`select property_type from public.listings where title = 'Legacy condo'`);
   ok(legacy.rows[0].property_type === 'apartment', 'upgrade: legacy property types are normalised');
   ok((await db.query(`select 1 from public.profiles where id = '${legacyUser}'`)).rows.length === 1, 'upgrade: existing users get a backfilled profile');
+  const convs = await db.query(`select student_id, landlord_id, (select count(*)::int from public.messages m where m.conversation_id = c.id) as n from public.conversations c`);
+  ok(convs.rows.length === 1 && convs.rows[0].student_id === legacyAsker && convs.rows[0].landlord_id === legacyUser && convs.rows[0].n === 2,
+    'upgrade: old messages with the listing owner are grouped into one conversation');
+  const loose = await db.query(`select count(*)::int as n from public.messages where conversation_id is null`);
+  ok(loose.rows[0].n === 1, 'upgrade: messages between two non-owners stay unattached');
   await rlsChecks(db, 'upgrade');
 }
 
 // Scenario 2: a brand-new project, plus the seed file if present.
 {
-  const db = new PGlite({ extensions: { uuid_ossp, pgcrypto } });
-  await db.exec(STUB);
+  const db = await createDb();
   await applyMigrations(db, 'fresh');
   if (fs.existsSync(seedPath)) {
     await db.exec(fs.readFileSync(seedPath, 'utf8'));
