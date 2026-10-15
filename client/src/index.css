@@ -2,65 +2,189 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * One palette for the whole app: warm paper, near-black ink and a brick accent,
+ * after the brick houses most students rent near campus. Every colour in the UI
+ * comes from these tokens, so dark mode is a second set of values, not a second stylesheet.
+ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 40 30% 98%;
+    --foreground: 24 12% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 24 12% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221 83% 53%;
-    --radius: 0.5rem;
+    --popover-foreground: 24 12% 10%;
+    --primary: 13 62% 38%;
+    --primary-foreground: 40 30% 98%;
+    --secondary: 36 22% 93%;
+    --secondary-foreground: 24 12% 14%;
+    --muted: 36 20% 94%;
+    --muted-foreground: 25 7% 37%;
+    --accent: 36 24% 91%;
+    --accent-foreground: 24 12% 10%;
+    --destructive: 356 68% 44%;
+    --destructive-foreground: 40 30% 98%;
+    --success: 142 32% 30%;
+    --border: 30 14% 86%;
+    --input: 30 12% 78%;
+    /* Focus rings are ink, not brick, so a focused field never looks like an error. */
+    --ring: 24 12% 30%;
+    --radius: 0.375rem;
+
+    /* Placeholder tiles for listings without photos: brick, sage, slate, sand, clay. */
+    --tone-1: 13 38% 88%;
+    --tone-2: 110 16% 85%;
+    --tone-3: 210 14% 86%;
+    --tone-4: 40 38% 85%;
+    --tone-5: 25 24% 84%;
+    --tone-ink: 24 20% 22%;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --background: 24 9% 8%;
+    --foreground: 36 22% 91%;
+    --card: 24 8% 11%;
+    --card-foreground: 36 22% 91%;
+    --popover: 24 8% 11%;
+    --popover-foreground: 36 22% 91%;
+    --primary: 14 64% 62%;
+    --primary-foreground: 24 12% 8%;
+    --secondary: 24 7% 16%;
+    --secondary-foreground: 36 22% 91%;
+    --muted: 24 7% 14%;
+    --muted-foreground: 30 9% 66%;
+    --accent: 24 7% 18%;
+    --accent-foreground: 36 22% 91%;
+    --destructive: 356 70% 62%;
+    --destructive-foreground: 24 12% 8%;
+    --success: 142 30% 62%;
+    --border: 24 7% 21%;
+    --input: 24 7% 27%;
+    --ring: 36 18% 72%;
+
+    --tone-1: 13 22% 20%;
+    --tone-2: 110 10% 19%;
+    --tone-3: 210 10% 20%;
+    --tone-4: 40 18% 19%;
+    --tone-5: 25 14% 19%;
+    --tone-ink: 36 22% 84%;
+
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'kern';
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-serif tracking-tight;
+  }
+
+  ::selection {
+    @apply bg-primary/20;
   }
 }
 
 @layer components {
-  .animate-fade-in {
-    @apply opacity-0 animate-[fadeIn_0.5s_ease-in-out_forwards];
+  /* Small uppercase label above a section or a fact, like on a printed listing sheet. */
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground;
   }
-  
-  .animate-slide-up {
-    @apply opacity-0 translate-y-5 animate-[slideUp_0.5s_ease-out_forwards];
+
+  .page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
   }
 
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
-  
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  
-  .navbar-blur {
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+}
+
+/* Map markers (client/src/pages/Map.tsx) */
+.map-price {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  border: 1px solid hsl(var(--border));
+}
+
+.map-price-selected {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
+.map-campus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: #7a003c;
+  color: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+/* OpenStreetMap only serves light tiles, so dark mode inverts them. */
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+}
+
+.dark .leaflet-container {
+  background: hsl(var(--background));
+}
+
+.dark .leaflet-control-attribution,
+.dark .leaflet-bar a {
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
-@keyframes fadeIn {
-  0% { opacity: 0; }
-  100% { opacity: 1; }
+/* Marker clusters in the palette instead of the plugin's default greens and yellows. */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background-color: hsl(var(--primary) / 0.25) !important;
 }
 
-@keyframes slideUp {
-  0% { transform: translateY(20px); opacity: 0; }
-  100% { transform: translateY(0); opacity: 1; }
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
