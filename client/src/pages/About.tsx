@@ -1,184 +1,89 @@
-import { motion } from 'framer-motion';
+import { Link } from 'wouter';
 import FAQ from '@/components/FAQ';
 
-const About = () => {
-  return (
-    <div className="pt-32 pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <motion.h1 
-            className="text-4xl font-bold text-primary-800 mb-4"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            About LetMeKnock
-          </motion.h1>
-          <motion.p 
-            className="text-xl text-gray-600 max-w-3xl mx-auto"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            Simplifying student housing search since 2023
-          </motion.p>
-        </div>
+const does = [
+  ['Distance first', 'Every listing is placed on the map, and searches can be limited to 1, 2, 5 or 10 km from campus.'],
+  ['Plain-language search', 'Type "2 bedroom under $900 near campus" and the filters fill themselves in.'],
+  ['Messages in one place', 'Students and landlords talk on the listing itself, with replies arriving live and an email when you are away.'],
+  ['Saved listings and notes', 'Keep a shortlist, write private notes, and group places into collections.'],
+];
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-16">
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-2xl font-semibold text-primary-800 mb-4">Our Mission</h2>
-            <p className="text-gray-600 mb-4">
-              LetMeKnock was founded with a simple mission: to make finding student housing as 
-              easy and stress-free as possible. We understand that searching for a place to live 
-              while focusing on your studies can be overwhelming.
-            </p>
-            <p className="text-gray-600 mb-4">
-              That's why we've created a platform specifically designed for students, with features 
-              that prioritize what matters most to you: proximity to campus, affordability, and 
-              amenities that support your academic success.
-            </p>
-            <p className="text-gray-600">
-              Our goal is to connect students with housing options that feel like home, allowing 
-              you to focus on what really matters - your education and college experience.
-            </p>
-          </motion.div>
+const doesNot = [
+  'We do not inspect properties. View a place in person before you agree to anything.',
+  'We do not take payments or deposits. Never send money before you have seen the place and signed a lease.',
+  'We do not verify landlords. Check that the person you meet can show you inside the place.',
+];
 
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-            className="bg-primary-50 rounded-xl p-8"
-          >
-            <h2 className="text-2xl font-semibold text-primary-800 mb-4">Why Choose Us?</h2>
-            <ul className="space-y-3">
-              <li className="flex items-start">
-                <div className="flex-shrink-0 w-6 h-6 bg-primary-100 rounded-full flex items-center justify-center mt-1 mr-3">
-                  <i className="fas fa-check text-primary-800 text-xs"></i>
-                </div>
-                <p className="text-gray-600">
-                  <span className="font-medium text-gray-800">Student-Focused Platform:</span> Built specifically for students with features addressing your unique housing needs.
-                </p>
-              </li>
-              <li className="flex items-start">
-                <div className="flex-shrink-0 w-6 h-6 bg-primary-100 rounded-full flex items-center justify-center mt-1 mr-3">
-                  <i className="fas fa-check text-primary-800 text-xs"></i>
-                </div>
-                <p className="text-gray-600">
-                  <span className="font-medium text-gray-800">Campus Proximity:</span> All listings are organized by their distance from campus and nearby amenities.
-                </p>
-              </li>
-              <li className="flex items-start">
-                <div className="flex-shrink-0 w-6 h-6 bg-primary-100 rounded-full flex items-center justify-center mt-1 mr-3">
-                  <i className="fas fa-check text-primary-800 text-xs"></i>
-                </div>
-                <p className="text-gray-600">
-                  <span className="font-medium text-gray-800">Verified Listings:</span> We ensure all property information is accurate and up-to-date.
-                </p>
-              </li>
-              <li className="flex items-start">
-                <div className="flex-shrink-0 w-6 h-6 bg-primary-100 rounded-full flex items-center justify-center mt-1 mr-3">
-                  <i className="fas fa-check text-primary-800 text-xs"></i>
-                </div>
-                <p className="text-gray-600">
-                  <span className="font-medium text-gray-800">Student Community:</span> Connect with other students looking for roommates or housing advice.
-                </p>
-              </li>
-              <li className="flex items-start">
-                <div className="flex-shrink-0 w-6 h-6 bg-primary-100 rounded-full flex items-center justify-center mt-1 mr-3">
-                  <i className="fas fa-check text-primary-800 text-xs"></i>
-                </div>
-                <p className="text-gray-600">
-                  <span className="font-medium text-gray-800">Resource Hub:</span> Access guides, tips, and tools to help navigate your housing search.
-                </p>
-              </li>
-            </ul>
-          </motion.div>
-        </div>
+const next = [
+  ['Roommate matching', 'Find students with a similar budget who are looking for housemates.'],
+  ['Viewing times', 'Book a time to see a place from its listing.'],
+  ['More campuses', 'Other Canadian universities, once McMaster works well.'],
+];
 
-        <motion.div 
-          className="mb-16"
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-        >
-          <h2 className="text-2xl font-semibold text-primary-800 mb-6 text-center">Our Future Plans</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mb-4">
-                <i className="fas fa-user-shield text-primary-800 text-xl"></i>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">User Authentication</h3>
-              <p className="text-gray-600">
-                We're implementing secure login options with OAuth 2.0 to provide personalized experiences 
-                while protecting your data.
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mb-4">
-                <i className="fas fa-comments text-primary-800 text-xl"></i>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Messaging System</h3>
-              <p className="text-gray-600">
-                Soon you'll be able to directly message landlords and potential roommates through 
-                our secure in-app messaging platform.
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mb-4">
-                <i className="fas fa-robot text-primary-800 text-xl"></i>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">AI Chatbot Support</h3>
-              <p className="text-gray-600">
-                We're developing an AI assistant to answer your housing questions instantly and 
-                help find listings that match your specific needs.
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mb-4">
-                <i className="fas fa-calendar-alt text-primary-800 text-xl"></i>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Viewing Scheduler</h3>
-              <p className="text-gray-600">
-                Schedule property viewings directly through our platform with automated reminders 
-                and confirmation systems.
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mb-4">
-                <i className="fas fa-file-signature text-primary-800 text-xl"></i>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Digital Leasing</h3>
-              <p className="text-gray-600">
-                We're implementing secure online lease signing with encryption to streamline the 
-                rental process from search to move-in.
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mb-4">
-                <i className="fas fa-database text-primary-800 text-xl"></i>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Dynamic Listings</h3>
-              <p className="text-gray-600">
-                Our database integration will allow real-time updates of available properties 
-                and instant notifications for new listings that match your criteria.
-              </p>
-            </div>
+const About = () => (
+  <article className="page max-w-3xl py-10 md:py-14">
+    <p className="eyebrow mb-3">About</p>
+    <h1 className="text-4xl font-semibold leading-tight md:text-5xl">A simpler way to rent near campus</h1>
+    <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
+      Student rentals near McMaster are spread across group posts, classifieds and word of mouth. LetMeKnock puts them in
+      one place, measured by what students care about first: how far the walk to campus is.
+    </p>
+
+    <section className="mt-12" aria-labelledby="does-heading">
+      <h2 id="does-heading" className="mb-5 text-2xl font-semibold">
+        What it does
+      </h2>
+      <dl className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+        {does.map(([title, body]) => (
+          <div key={title} className="border-t pt-4">
+            <dt className="font-medium">{title}</dt>
+            <dd className="mt-1 text-[15px] leading-relaxed text-muted-foreground">{body}</dd>
           </div>
-        </motion.div>
+        ))}
+      </dl>
+    </section>
 
-        <FAQ />
-      </div>
+    <section className="mt-12 rounded-lg border bg-card p-6" aria-labelledby="not-heading">
+      <h2 id="not-heading" className="mb-3 text-xl font-semibold">
+        What it doesn't do
+      </h2>
+      <ul className="list-disc space-y-2 pl-5 text-[15px] leading-relaxed">
+        {doesNot.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      <p className="mt-4 text-sm text-muted-foreground">
+        Renting in Ontario? Our{' '}
+        <Link href="/resources" className="text-primary underline underline-offset-4">
+          guide
+        </Link>{' '}
+        covers deposits, viewings and budgeting.
+      </p>
+    </section>
+
+    <section className="mt-12" aria-labelledby="next-heading">
+      <h2 id="next-heading" className="mb-5 text-2xl font-semibold">
+        What's next
+      </h2>
+      <ol className="space-y-4">
+        {next.map(([title, body], i) => (
+          <li key={title} className="flex gap-4">
+            <span className="font-serif text-xl text-primary tabular-nums" aria-hidden="true">
+              {String(i + 1).padStart(2, '0')}
+            </span>
+            <div>
+              <p className="font-medium">{title}</p>
+              <p className="text-[15px] text-muted-foreground">{body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <div className="mt-14">
+      <FAQ />
     </div>
-  );
-};
+  </article>
+);
 
 export default About;
