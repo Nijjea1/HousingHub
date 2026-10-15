@@ -10,7 +10,21 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontFamily: {
+        // Fonts already on the device, so nothing downloads: Iowan on Apple, Palatino on Windows.
+        serif: ['"Iowan Old Style"', '"Palatino Linotype"', "Palatino", '"Book Antiqua"', "Georgia", "serif"],
+        sans: ["system-ui", "-apple-system", '"Segoe UI"', "Roboto", '"Helvetica Neue"', "Arial", "sans-serif"],
+      },
       colors: {
+        success: "hsl(var(--success))",
+        tone: {
+          1: "hsl(var(--tone-1))",
+          2: "hsl(var(--tone-2))",
+          3: "hsl(var(--tone-3))",
+          4: "hsl(var(--tone-4))",
+          5: "hsl(var(--tone-5))",
+          ink: "hsl(var(--tone-ink))",
+        },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
