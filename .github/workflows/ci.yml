@@ -1,0 +1,31 @@
+# Type check, unit and API tests, database tests and a production build on every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npm run check
+      - name: Unit and API tests
+        run: npm test
+      - name: Database tests (PGlite with PostGIS)
+        run: npm run test:db
+      - name: Build
+        run: npm run build
