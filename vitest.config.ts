@@ -7,7 +7,7 @@ export default mergeConfig(
   defineConfig({
     test: {
       root: import.meta.dirname,
-      include: ["client/src/**/*.test.ts", "shared/**/*.test.ts"],
+      include: ["client/src/**/*.test.ts", "shared/**/*.test.ts", "scripts/**/*.test.ts", "server/**/*.test.ts"],
       environment: "node",
     },
   }),

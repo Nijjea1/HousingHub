@@ -36,7 +36,9 @@
   "include": [
     "client/src",
     "shared",
-    "server"
+    "server",
+    "scripts",
+    "api"
   ],
   "references": [
     {
