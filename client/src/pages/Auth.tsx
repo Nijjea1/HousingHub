@@ -1,358 +1,312 @@
 import { useState } from 'react';
-import { useLocation } from 'wouter';
-import { motion } from 'framer-motion';
-import logo from '@/assets/logo.svg';
+import { useLocation, useSearch } from 'wouter';
+import { LogoMark } from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUniversities } from '@/hooks/use-universities';
+import { safeNextPath } from '@/lib/redirect';
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '@shared/demo';
+import { MIN_PASSWORD_LENGTH, signUpSchema, type SignUpInput, type UserRole } from '@shared/schema';
 
 interface AuthProps {
   initialMode?: 'signin' | 'signup';
 }
 
+type FieldErrors = Partial<Record<keyof SignUpInput, string[]>>;
+
+const inputClass =
+  'block h-10 w-full rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const submitClass =
+  'flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-60';
+
+const Field = ({
+  id,
+  label,
+  error,
+  hint,
+  children,
+}: {
+  id: string;
+  label: string;
+  error?: string;
+  hint?: string;
+  children: React.ReactNode;
+}) => (
+  <div>
+    <label htmlFor={id} className="block text-sm font-medium text-foreground mb-1">
+      {label}
+    </label>
+    {children}
+    {error ? (
+      <p className="mt-1 text-xs text-destructive">{error}</p>
+    ) : (
+      hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+    )}
+  </div>
+);
+
+const emptySignUp: SignUpInput = {
+  fullName: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  role: 'student',
+  universityId: 'mcmaster',
+};
+
 const Auth = ({ initialMode = 'signin' }: AuthProps) => {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
-  // Shared
   const [, setLocation] = useLocation();
+  // Back to the page that asked the user to sign in, e.g. /edit-listing/<id>.
+  const next = safeNextPath(useSearch());
   const { signIn, signUp } = useAuth();
-  // Sign In
+  const { data: universities } = useUniversities();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
-  // Sign Up
-  const [name, setName] = useState('');
-  const [university, setUniversity] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [agreeTerms, setAgreeTerms] = useState(false);
-  // State
+  const [form, setForm] = useState<SignUpInput>(emptySignUp);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const update = (patch: Partial<SignUpInput>) => setForm((f) => ({ ...f, ...patch }));
+
+  const run = async (action: () => Promise<void>, fallback: string) => {
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
-      await signIn(email, password);
-      setLocation('/profile');
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in');
+      await action();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallback);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const signInAs = (address: string, secret: string) =>
+    run(async () => {
+      await signIn(address, secret);
+      setLocation(next);
+    }, 'Failed to sign in');
+
+  const handleSignIn = (e: React.FormEvent) => {
     e.preventDefault();
+    signInAs(email, password);
+  };
+
+  const handleSignUp = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = signUpSchema.safeParse(form);
+    if (!parsed.success) {
+      setFieldErrors(parsed.error.flatten().fieldErrors);
+      return;
+    }
+    setFieldErrors({});
+    run(async () => {
+      const { needsConfirmation } = await signUp(parsed.data);
+      if (needsConfirmation) {
+        setNotice(`Check ${parsed.data.email} for a link to confirm your account, then sign in.`);
+        setMode('signin');
+      } else {
+        setLocation(next);
+      }
+    }, 'Failed to sign up');
+  };
+
+  const switchMode = (next: 'signin' | 'signup') => {
+    setMode(next);
     setError(null);
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    if (!agreeTerms) {
-      setError('You must agree to the terms.');
-      return;
-    }
-    setLoading(true);
-    try {
-      await signUp(email, password);
-      setLocation('/profile');
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign up');
-    } finally {
-      setLoading(false);
-    }
+    setFieldErrors({});
   };
 
   return (
-    <div className="pt-32 pb-20 bg-gray-50 min-h-screen">
-      <div className="max-w-md mx-auto px-4 sm:px-6">
-        <motion.div 
-          className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="px-6 pt-8 pb-6 border-b border-gray-100">
-            <div className="flex justify-center mb-6">
-              <img src={logo} alt="LetMeKnock Logo" className="w-16 h-16" />
+    <div className="page py-10 md:py-16">
+      <div className="mx-auto max-w-md">
+        <div className="overflow-hidden rounded-lg border bg-card">
+          <div className="border-b px-6 pb-6 pt-8">
+            <div className="mb-5 flex justify-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <LogoMark className="h-8 w-8" />
+              </span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 text-center">
+            <h1 className="text-center text-3xl font-semibold">
               {mode === 'signin' ? 'Welcome back' : 'Create your account'}
             </h1>
-            <p className="text-gray-600 text-center mt-1">
-              {mode === 'signin' ? 'Sign in to continue to LetMeKnock' : 'Join LetMeKnock to find your perfect student housing'}
+            <p className="text-muted-foreground text-center mt-1">
+              {mode === 'signin' ? 'Sign in to continue to LetMeKnock' : 'Find or list student housing near campus'}
             </p>
           </div>
+
           <div className="p-6">
             {error && (
-              <div className="mb-4 text-red-600 text-center text-sm font-medium">
+              <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
                 {error}
               </div>
             )}
+            {notice && (
+              <div className="mb-4 rounded-md border border-success/40 bg-success/10 p-3 text-sm" role="status">{notice}</div>
+            )}
+
             {mode === 'signin' ? (
-              <form onSubmit={handleSignIn} className="space-y-6">
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="fas fa-envelope text-gray-400"></i>
-                    </div>
+              <>
+                <form onSubmit={handleSignIn} className="space-y-6">
+                  <Field id="email" label="Email">
                     <input
                       id="email"
-                      name="email"
                       type="email"
                       autoComplete="email"
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring focus:ring-primary-500 focus:ring-opacity-50 py-3 border"
-                      placeholder="you@university.edu"
+                      className={inputClass}
+                      placeholder="you@mcmaster.ca"
                     />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="fas fa-lock text-gray-400"></i>
-                    </div>
+                  </Field>
+                  <Field id="password" label="Password">
                     <input
                       id="password"
-                      name="password"
                       type="password"
                       autoComplete="current-password"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring focus:ring-primary-500 focus:ring-opacity-50 py-3 border"
-                      placeholder="••••••••"
+                      className={inputClass}
                     />
+                  </Field>
+                  <button type="submit" className={submitClass} disabled={loading}>
+                    {loading ? 'Signing in...' : 'Sign in'}
+                  </button>
+                </form>
+
+                <div className="mt-6">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-border"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-card text-muted-foreground">Or try the demo</span>
+                    </div>
+                  </div>
+                  <div className="mt-6 grid grid-cols-2 gap-3">
+                    {(Object.keys(DEMO_ACCOUNTS) as UserRole[]).map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        disabled={loading}
+                        onClick={() => signInAs(DEMO_ACCOUNTS[role].email, DEMO_PASSWORD)}
+                        className="h-10 w-full rounded-md border bg-card px-4 text-sm font-medium hover:bg-accent disabled:opacity-60"
+                      >
+                        Demo {role}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <input
-                      id="remember-me"
-                      name="remember-me"
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                    <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                      Remember me
-                    </label>
-                  </div>
-                  <div className="text-sm">
-                    <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
-                      Forgot password?
-                    </a>
-                  </div>
-                </div>
-                <div>
-                  <motion.button
-                    type="submit"
-                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-800 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.98 }}
-                    disabled={loading}
-                  >
-                    {loading ? 'Signing In...' : 'Sign In'}
-                  </motion.button>
-                </div>
-              </form>
+              </>
             ) : (
-              <form onSubmit={handleSignUp} className="space-y-5">
+              <form onSubmit={handleSignUp} className="space-y-5" noValidate>
                 <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-                    Full Name
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="fas fa-user text-gray-400"></i>
-                    </div>
-                    <input
-                      id="name"
-                      name="name"
-                      type="text"
-                      autoComplete="name"
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring focus:ring-primary-500 focus:ring-opacity-50 py-3 border"
-                      placeholder="John Smith"
-                    />
+                  <span className="block text-sm font-medium text-foreground mb-1">I am a</span>
+                  <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Account type">
+                    {(['student', 'landlord'] as const).map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        role="radio"
+                        aria-checked={form.role === role}
+                        onClick={() => update({ role })}
+                        className={`h-10 rounded-md border text-sm font-medium transition-colors ${form.role === role ? 'border-foreground bg-foreground text-background' : 'hover:bg-accent'}`}
+                      >
+                        {role === 'student' ? 'Student' : 'Landlord'}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="fas fa-envelope text-gray-400"></i>
-                    </div>
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring focus:ring-primary-500 focus:ring-opacity-50 py-3 border"
-                      placeholder="you@university.edu"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="university" className="block text-sm font-medium text-gray-700 mb-1">
-                    University/College
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="fas fa-university text-gray-400"></i>
-                    </div>
-                    <input
-                      id="university"
-                      name="university"
-                      type="text"
-                      required
-                      value={university}
-                      onChange={(e) => setUniversity(e.target.value)}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring focus:ring-primary-500 focus:ring-opacity-50 py-3 border"
-                      placeholder="State University"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="fas fa-lock text-gray-400"></i>
-                    </div>
-                    <input
-                      id="password"
-                      name="password"
-                      type="password"
-                      autoComplete="new-password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring focus:ring-primary-500 focus:ring-opacity-50 py-3 border"
-                      placeholder="••••••••"
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters long</p>
-                </div>
-                <div>
-                  <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
-                    Confirm Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="fas fa-lock text-gray-400"></i>
-                    </div>
-                    <input
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      type="password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring focus:ring-primary-500 focus:ring-opacity-50 py-3 border"
-                      placeholder="••••••••"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-start">
-                  <div className="flex items-center h-5">
-                    <input
-                      id="terms"
-                      name="terms"
-                      type="checkbox"
-                      checked={agreeTerms}
-                      onChange={(e) => setAgreeTerms(e.target.checked)}
-                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                    />
-                  </div>
-                  <div className="ml-3 text-sm">
-                    <label htmlFor="terms" className="font-medium text-gray-700">
-                      I agree to the{' '}
-                      <a href="#" className="text-primary-600 hover:text-primary-500">
-                        Terms of Service
-                      </a>{' '}
-                      and{' '}
-                      <a href="#" className="text-primary-600 hover:text-primary-500">
-                        Privacy Policy
-                      </a>
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <motion.button
-                    type="submit"
-                    className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-800 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.98 }}
-                    disabled={loading}
+                <Field id="fullName" label="Full name" error={fieldErrors.fullName?.[0]}>
+                  <input
+                    id="fullName"
+                    type="text"
+                    autoComplete="name"
+                    value={form.fullName}
+                    onChange={(e) => update({ fullName: e.target.value })}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field id="email" label="Email" error={fieldErrors.email?.[0]}>
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    value={form.email}
+                    onChange={(e) => update({ email: e.target.value })}
+                    className={inputClass}
+                    placeholder="you@mcmaster.ca"
+                  />
+                </Field>
+                <Field id="university" label="University" error={fieldErrors.universityId?.[0]}>
+                  <select
+                    id="university"
+                    value={form.universityId}
+                    onChange={(e) => update({ universityId: e.target.value })}
+                    className={inputClass}
                   >
-                    {loading ? 'Signing Up...' : 'Sign Up'}
-                  </motion.button>
-                </div>
+                    {!universities?.length && <option value="">Loading...</option>}
+                    {universities?.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field
+                  id="password"
+                  label="Password"
+                 
+                  error={fieldErrors.password?.[0]}
+                  hint={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                >
+                  <input
+                    id="password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={form.password}
+                    onChange={(e) => update({ password: e.target.value })}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field id="confirmPassword" label="Confirm password" error={fieldErrors.confirmPassword?.[0]}>
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    value={form.confirmPassword}
+                    onChange={(e) => update({ confirmPassword: e.target.value })}
+                    className={inputClass}
+                  />
+                </Field>
+                <button type="submit" className={submitClass} disabled={loading}>
+                  {loading ? 'Creating account...' : 'Create account'}
+                </button>
               </form>
             )}
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Or continue with</span>
-                </div>
-              </div>
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <i className="fab fa-google text-lg"></i>
-                </a>
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <i className="fab fa-apple text-lg"></i>
-                </a>
-              </div>
-            </div>
           </div>
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-center">
-            <p className="text-sm text-gray-600">
-              {mode === 'signin' ? (
-                <>Don&apos;t have an account?{' '}
-                  <button type="button" className="font-medium text-primary-600 hover:text-primary-500" onClick={() => setMode('signup')}>
-                    Sign up here
-                  </button>
-                </>
-              ) : (
-                <>Already have an account?{' '}
-                  <button type="button" className="font-medium text-primary-600 hover:text-primary-500" onClick={() => setMode('signin')}>
-                    Sign in here
-                  </button>
-                </>
-              )}
+
+          <div className="border-t bg-muted/40 px-6 py-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              {mode === 'signin' ? "Don't have an account? " : 'Already have an account?'}
+              <button
+                type="button"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+                onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
+              >
+                {mode === 'signin' ? 'Sign up' : 'Sign in'}
+              </button>
             </p>
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
 };
 
-export default Auth; 
+export default Auth;
