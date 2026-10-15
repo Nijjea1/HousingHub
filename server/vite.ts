@@ -74,10 +74,19 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
-
-  // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+  app.use(express.static(distPath, { redirect: false }));
+  // Prerendered pages live at <route>/index.html; everything else gets the empty shell (app.html).
+  app.use("*", (req, res) => {
+    const shell = path.resolve(distPath, "app.html");
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(new URL(req.originalUrl, "http://localhost").pathname);
+    } catch {
+      return res.sendFile(shell);
+    }
+    // path.join resolves "..", so anything outside dist is refused rather than served.
+    const prerendered = path.join(distPath, pathname, "index.html");
+    const inside = prerendered.startsWith(distPath + path.sep);
+    res.sendFile(inside && fs.existsSync(prerendered) ? prerendered : shell);
   });
 }

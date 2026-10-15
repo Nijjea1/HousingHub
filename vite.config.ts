@@ -19,8 +19,9 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ["react", "react-dom"],
+        // A function rather than a list, so the server build (where React is external) can share this config.
+        manualChunks(id) {
+          if (/\/node_modules\/(react|react-dom|scheduler)\//.test(id)) return "vendor";
         },
       },
     },

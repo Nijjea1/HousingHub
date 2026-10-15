@@ -14,3 +14,6 @@ client/dist
 # Supabase CLI local state
 supabase/.branches
 supabase/.temp
+
+# Server-side render bundle, used only during the build
+.ssr
