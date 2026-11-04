@@ -112,6 +112,54 @@ async function rlsChecks(db, label) {
   ok(await fails(db, B, `insert into public.user_presence (user_id) values ($1)`, [C]), `${label}: cannot create someone else's last seen time`);
   ok((await as(db, B, `update public.user_presence set last_seen_at = now() where user_id = $1 returning user_id`, [A])).rows.length === 0, `${label}: cannot change someone else's last seen time`);
 
+  await as(db, A, `insert into public.saved_searches (user_id, name, params) values ($1, 'Near campus', '{"maxPrice":1000}')`, [A]);
+  ok((await as(db, A, `select * from public.saved_searches`)).rows.length === 1, `${label}: users can save a search`);
+  ok((await as(db, B, `select * from public.saved_searches`)).rows.length === 0, `${label}: saved searches are private`);
+  ok(await fails(db, B, `insert into public.saved_searches (user_id, name) values ($1, 'x')`, [A]), `${label}: cannot save a search for someone else`);
+  ok(await fails(db, A, `insert into public.saved_searches (user_id, name) values ($1, '  ')`, [A]), `${label}: a saved search needs a name`);
+  ok((await as(db, B, `delete from public.saved_searches where user_id = $1 returning id`, [A])).rows.length === 0, `${label}: cannot delete someone else's saved search`);
+  ok((await as(db, A, `delete from public.saved_searches where user_id = $1 returning id`, [A])).rows.length === 1, `${label}: users can delete their saved search`);
+
+  const askView = `insert into public.viewing_requests (listing_id, student_id, landlord_id, proposed_at, message) values ($1, $2, $3, now() + interval '2 days', 'Can I see it?') returning id`;
+  ok(await fails(db, null, askView, [lid, A, B]), `${label}: anon cannot request a viewing`);
+  ok(await fails(db, A, askView, [lid, A, C]), `${label}: viewing request must go to the listing's real owner`);
+  ok(await fails(db, C, askView, [lid, A, B]), `${label}: cannot request a viewing on someone else's behalf`);
+  ok(await fails(db, B, askView, [lid, B, B]), `${label}: owner cannot request a viewing of their own listing`);
+  ok(await fails(db, A, `insert into public.viewing_requests (listing_id, student_id, landlord_id, proposed_at, status) values ($1, $2, $3, now(), 'accepted')`, [lid, A, B]), `${label}: a new viewing request starts pending`);
+  const vid = (await as(db, A, askView, [lid, A, B])).rows[0].id;
+  ok(!!vid, `${label}: a student can request a viewing`);
+  ok((await as(db, B, `select * from public.viewing_requests`)).rows.length === 1, `${label}: the owner can read viewing requests for their listing`);
+  ok((await as(db, C, `select * from public.viewing_requests`)).rows.length === 0, `${label}: third party cannot read viewing requests`);
+  ok((await as(db, A, `update public.viewing_requests set status = 'accepted' where id = $1 returning id`, [vid])).rows.length === 0, `${label}: the student cannot accept their own request`);
+  ok(await fails(db, B, `update public.viewing_requests set proposed_at = now() where id = $1`, [vid]), `${label}: the owner can only change the status`);
+  ok(await fails(db, B, `update public.viewing_requests set status = 'maybe' where id = $1`, [vid]), `${label}: status is constrained`);
+  ok((await as(db, B, `update public.viewing_requests set status = 'accepted' where id = $1 returning id`, [vid])).rows.length === 1, `${label}: the owner can accept a request`);
+  ok(await fails(db, A, `delete from public.viewing_requests where id = $1`, [vid]), `${label}: viewing requests cannot be deleted`);
+
+  const review = `insert into public.reviews (listing_id, author_id, rating, body) values ($1, $2, $3, 'Great spot') returning id`;
+  ok(await fails(db, null, review, [lid, A, 5]), `${label}: anon cannot review`);
+  ok(await fails(db, C, review, [lid, A, 5]), `${label}: cannot review as someone else`);
+  ok(await fails(db, B, review, [lid, B, 5]), `${label}: owner cannot review their own listing`);
+  ok(await fails(db, A, review, [lid, A, 6]), `${label}: rating must be 1 to 5`);
+  const rid = (await as(db, A, review, [lid, A, 5])).rows[0].id;
+  ok(!!rid, `${label}: a user can review a listing`);
+  ok(await fails(db, A, review, [lid, A, 4]), `${label}: one review per person per listing`);
+  ok((await as(db, null, `select * from public.reviews`)).rows.length === 1, `${label}: anon can read reviews`);
+  ok((await as(db, C, `update public.reviews set rating = 1 where id = $1 returning id`, [rid])).rows.length === 0, `${label}: cannot edit someone else's review`);
+  ok(await fails(db, A, `update public.reviews set author_id = $1 where id = $2`, [C, rid]), `${label}: a review cannot change author`);
+  ok((await as(db, A, `update public.reviews set rating = 4 where id = $1 returning id`, [rid])).rows.length === 1, `${label}: authors can edit their review`);
+  ok((await as(db, C, `delete from public.reviews where id = $1 returning id`, [rid])).rows.length === 0, `${label}: cannot delete someone else's review`);
+  ok((await as(db, A, `delete from public.reviews where id = $1 returning id`, [rid])).rows.length === 1, `${label}: authors can delete their review`);
+
+  await db.exec(`insert into public.commute_cache (listing_id, mode, minutes, distance_m, geometry) values ('${lid}', 'walk', 14.5, 1100, '_p~iF~ps|U')`);
+  ok((await as(db, null, `select * from public.commute_cache`)).rows.length === 1, `${label}: anon can read cached commutes`);
+  ok(await fails(db, A, `insert into public.commute_cache (listing_id, mode, minutes) values ($1, 'bike', 5)`, [lid]), `${label}: users cannot write the commute cache`);
+  ok(await fails(db, A, `update public.commute_cache set minutes = 1`), `${label}: users cannot edit the commute cache`);
+  ok(await fails(db, A, `delete from public.commute_cache`), `${label}: users cannot clear the commute cache`);
+  await db.exec(`reset role;`);
+  ok(await db.exec(`insert into public.commute_cache (listing_id, mode, minutes) values ('${lid}', 'walk', 1)`).then(() => false, () => true), `${label}: one cached row per listing and mode`);
+  ok(await db.exec(`insert into public.commute_cache (listing_id, mode, minutes) values ('${lid}', 'teleport', 1)`).then(() => false, () => true), `${label}: commute mode is constrained`);
+
   await db.exec(`delete from auth.users where id = '${C}'`);
   ok(true, `${label}: deleting a user works (old broken deletion trigger removed)`);
 }
