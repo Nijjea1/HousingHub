@@ -1,5 +1,8 @@
 /** What the API needs from the outside world. Production passes Supabase-backed versions; tests pass fakes. */
+import type { Db } from "./db/client.js";
+import type { Publish } from "./publish.js";
 import type {
+  CommuteMode,
   Conversation,
   Coordinates,
   Listing,
@@ -47,9 +50,29 @@ export interface NewMessageNotice {
   content: string;
 }
 
+export interface RouteResult {
+  minutes: number;
+  distanceM: number | null;
+  /** Encoded polyline of the route, when the provider returns one. */
+  geometry: string | null;
+}
+
+/** Travel time from one point to another by a mode. */
+export interface RoutePlanner {
+  supports(mode: CommuteMode): boolean;
+  /** null when no route exists between the points. Throws when the provider fails. */
+  route(mode: CommuteMode, from: Coordinates, to: Coordinates): Promise<RouteResult | null>;
+}
+
 export type AddressQuery = Pick<ListingInput, "address" | "city" | "province">;
 
 export interface AppDeps {
+  /** Drizzle connection for the routes that don't go through the Supabase client. Routes answer 503 without it. */
+  db?: Db;
+  /** Commute times. The commute route answers 503 without it. */
+  routing?: RoutePlanner;
+  /** Sends live events through the realtime service. Left out when it isn't configured. */
+  publish?: Publish;
   /** Returns the user a JWT belongs to, or null if it is invalid or expired. */
   verifyToken(token: string): Promise<AuthUser | null>;
   /** Storage that acts as the caller, so row level security still applies. */

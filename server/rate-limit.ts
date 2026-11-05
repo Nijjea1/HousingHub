@@ -58,3 +58,12 @@ export function rateLimit(options: RateLimiterOptions): RequestHandler {
     next();
   };
 }
+
+/** The read and write limiters every router uses, sized by the app's limits. */
+export function limitersFor(deps: { limits?: { readsPerMinute: number; writesPerMinute: number }; now?: () => number }) {
+  const limits = deps.limits ?? { readsPerMinute: 120, writesPerMinute: 20 };
+  return {
+    read: rateLimit({ limit: limits.readsPerMinute, windowMs: 60_000, now: deps.now }),
+    write: rateLimit({ limit: limits.writesPerMinute, windowMs: 60_000, now: deps.now }),
+  };
+}

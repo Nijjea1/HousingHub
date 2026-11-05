@@ -25,3 +25,8 @@ export function asUser<T>(db: Db, userId: string | null, fn: (tx: Tx) => Promise
     return fn(tx);
   });
 }
+
+/** Rows from db.execute: postgres-js returns the array itself, PGlite wraps it in { rows }. */
+export function rowsOf<T>(result: unknown): T[] {
+  return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}

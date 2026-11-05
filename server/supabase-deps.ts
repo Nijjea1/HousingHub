@@ -15,7 +15,10 @@ import {
 } from "../shared/mappers.js";
 import type { AppDeps, ListingStore, MessageStore } from "./deps.js";
 import { cacheVerifiedTokens } from "./auth.js";
+import { createDrizzle } from "./db/client.js";
 import { createNominatimGeocoder } from "./geocode.js";
+import { createPublisherFromEnv } from "./publish.js";
+import { createRoutePlannerFromEnv } from "./routing.js";
 import { createEmailNotifier, type NotifyLookup } from "./notify.js";
 
 export function createSupabaseDeps(env: NodeJS.ProcessEnv = process.env): AppDeps {
@@ -137,9 +140,20 @@ export function createSupabaseDeps(env: NodeJS.ProcessEnv = process.env): AppDep
     }),
     listingsFor,
     messagesFor,
+    db: createDb(env),
+    routing: createRoutePlannerFromEnv(env),
+    publish: createPublisherFromEnv(env),
     notifyNewMessage: createNotifier(env, url),
     geocode: createNominatimGeocoder({ userAgent: env.GEOCODER_USER_AGENT ?? "LetMeKnock/0.2 (student housing)" }),
   };
+}
+
+function createDb(env: NodeJS.ProcessEnv) {
+  if (!env.DATABASE_URL) {
+    console.warn("Favorites, saved searches, viewings, reviews, inbox reads and commute times are off: set DATABASE_URL.");
+    return undefined;
+  }
+  return createDrizzle(env.DATABASE_URL);
 }
 
 /**
