@@ -13,17 +13,28 @@ export class ApiError extends Error {
 
 /** Calls /api with the signed-in user's token. Throws ApiError on any non-2xx response. */
 export async function apiFetch<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  const method = options.method ?? 'GET';
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
 
-  const res = await fetch(`/api${path}`, {
-    method: options.method ?? 'GET',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  const send = (bearer: string | undefined) =>
+    fetch(`/api${path}`, {
+      method,
+      headers: {
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+        ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+
+  let res = await send(token);
+
+  // The API refuses a token it can't verify, even on public pages. The stored session is dead (expired, or its
+  // server-side session is gone), so drop it: the app shows the signed-out state, and reads retry as a visitor.
+  if (res.status === 401 && token) {
+    await supabase.auth.signOut({ scope: 'local' });
+    if (method === 'GET') res = await send(undefined);
+  }
 
   if (res.status === 204) return undefined as T;
   const json = await res.json().catch(() => null);
