@@ -84,7 +84,8 @@ async function signIn(token: string): Promise<Client> {
 const next = <E extends keyof ServerToClientEvents>(socket: Client, event: E, ms = 2000) =>
   new Promise<Parameters<ServerToClientEvents[E]>[0]>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${event}`)), ms);
-    (socket as Socket).once(event, (payload: never) => {
+    // socket.io's typed once() can't follow a generic event name, so listen through the untyped base.
+    (socket as unknown as { once(e: string, l: (payload: Parameters<ServerToClientEvents[E]>[0]) => void): void }).once(event, (payload) => {
       clearTimeout(timer);
       resolve(payload);
     });
@@ -147,8 +148,8 @@ describe("messaging in a conversation room", () => {
 
     expect(await receipt).toMatchObject({ conversationId, readerId: U.landlord.id });
     expect(await unread).toEqual({ conversationId, unreadCount: 0, total: 0 });
-    const saved = await pg.query(`select is_read from public.messages where conversation_id = $1`, [conversationId]);
-    expect(saved.rows.every((r: { is_read: boolean }) => r.is_read)).toBe(true);
+    const saved = await pg.query<{ is_read: boolean }>(`select is_read from public.messages where conversation_id = $1`, [conversationId]);
+    expect(saved.rows.every((r) => r.is_read)).toBe(true);
   });
 
   it("does nothing the second time there is nothing to read", async () => {

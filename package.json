@@ -8,7 +8,7 @@
     "realtime": "tsx --env-file=.env realtime/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "tsc",
+    "check": "tsc && tsc -p tsconfig.node.json --noEmit",
     "test": "vitest run",
     "test:db": "node supabase/tests/rls.test.mjs && vitest run --config vitest.db.config.ts",
     "seed": "tsx --env-file=.env scripts/seed.ts",

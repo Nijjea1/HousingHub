@@ -38,6 +38,7 @@
     "shared",
     "server",
     "realtime",
+    "supabase/tests",
     "scripts",
     "api"
   ],

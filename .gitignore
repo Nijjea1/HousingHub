@@ -17,3 +17,6 @@ supabase/.temp
 
 # Server-side render bundle, used only during the build
 .ssr
+
+# TypeScript build cache from `npm run check`
+*.tsbuildinfo

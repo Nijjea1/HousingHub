@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { getTableColumns, getTableName, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import { asUser, type Db } from "../../server/db/client";
+import { asUser, rowsOf, type Db } from "../../server/db/client";
 import { allTables, savedSearches } from "../../server/db/schema";
 import { createDb, migrate } from "./db.mjs";
 
@@ -62,7 +62,7 @@ describe("asUser", () => {
 
   it("does not leak the role into the next call", async () => {
     await asUser(db, A, async () => undefined);
-    const [row] = (await db.execute(sql`select current_user as u`)).rows as { u: string }[];
+    const [row] = rowsOf<{ u: string }>(await db.execute(sql`select current_user as u`));
     expect(row.u).not.toBe("authenticated");
   });
 });
