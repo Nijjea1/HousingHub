@@ -52,7 +52,7 @@ const ViewingsContent = () => {
   const iRequested = data.filter((r) => r.studentId === user?.id);
 
   return (
-    <div className="page max-w-3xl pb-16 pt-28">
+    <div className="page max-w-3xl pb-16 pt-6">
       <h1 className="mb-2 text-3xl font-semibold">Viewings</h1>
       <p className="mb-8 text-muted-foreground">Times students asked to see your places, and times you asked to see others.</p>
 

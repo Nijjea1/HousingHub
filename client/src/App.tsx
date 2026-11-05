@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Switch, Route } from 'wouter';
+import { Switch, Route, useLocation } from 'wouter';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { FavoritesProvider } from './hooks/use-favorites';
@@ -67,6 +67,9 @@ const Router: React.FC = () => {
 const AppContent: React.FC = () => {
   const { user } = useAuth();
   const [scrollY, setScrollY] = React.useState(0);
+  const [location] = useLocation();
+  // The navbar floats over the page, so these pages need room below it. Home, About and Resources have their own.
+  const clearsNavbar = /^\/(listings|map|profile|create-listing|edit-listing|inbox|viewings|signin|signup)/.test(location);
   useMessageEvents(user?.id);
   usePresenceHeartbeat(user?.id);
 
@@ -80,7 +83,7 @@ const AppContent: React.FC = () => {
     <FavoritesProvider userId={user?.id ?? ''}>
       <div className="flex min-h-screen flex-col">
         <NavBar scrollY={scrollY} />
-        <main className="flex-grow">
+        <main className={`flex-grow ${clearsNavbar ? 'pt-24' : ''}`}>
           <Router />
         </main>
         <Footer />

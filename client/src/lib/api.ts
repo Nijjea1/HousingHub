@@ -30,5 +30,9 @@ export async function apiFetch<T>(path: string, options: { method?: string; body
   if (!res.ok) {
     throw new ApiError(res.status, json?.error ?? `Request failed (${res.status})`, json?.fields);
   }
+  // A 200 that isn't JSON means something other than our API answered, e.g. a dev server with no API behind it.
+  if (json === null) {
+    throw new ApiError(502, "The server didn't answer with data. Is the API running? (Start it with npm run dev.)");
+  }
   return json as T;
 }

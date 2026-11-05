@@ -215,7 +215,7 @@ const Inbox = () => {
     <div className="page py-6 md:py-8">
       <div>
         <h1 className="mb-4 text-3xl font-semibold">Messages</h1>
-        <div className="h-[calc(100vh-12rem)] min-h-[26rem] overflow-hidden rounded-lg border bg-card md:grid md:grid-cols-[20rem_1fr]">
+        <div className="h-[calc(100vh-12rem)] min-h-[26rem] overflow-hidden rounded-lg border bg-card md:grid md:grid-cols-[20rem_1fr] md:grid-rows-[minmax(0,1fr)]">
           <aside className={`border-r overflow-y-auto ${selectedId ? 'hidden md:block' : ''}`}>
             {error ? (
               <div className="p-6 text-sm text-destructive" role="alert">
@@ -240,7 +240,7 @@ const Inbox = () => {
               <ConversationList entries={entries} selectedId={selectedId} userId={user.id} />
             )}
           </aside>
-          <section className={`h-full ${selectedId ? '' : 'hidden md:flex md:items-center md:justify-center'}`}>
+          <section className={`h-full min-h-0 ${selectedId ? '' : 'hidden md:flex md:items-center md:justify-center'}`}>
             {selectedId && user ? (
               <Thread key={selectedId} conversationId={selectedId} entry={entry} userId={user.id} />
             ) : (

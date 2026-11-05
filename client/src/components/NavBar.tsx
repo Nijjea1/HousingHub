@@ -103,7 +103,7 @@ const NavBar: React.FC<NavBarProps> = ({ scrollY }) => {
   
   // Helper function to get nav item style based on active state
   const getNavItemStyle = (path: string) => {
-    const baseStyle = "font-medium transition-all duration-300 px-4 py-2 rounded-full cursor-pointer";
+    const baseStyle = "font-medium whitespace-nowrap transition-all duration-300 px-3 py-2 rounded-full cursor-pointer";
     const activeStyle = "bg-white/20 text-white backdrop-blur-sm shadow-inner";
     const inactiveStyle = "text-white hover:bg-white/20 hover:text-white";
     
@@ -125,9 +125,10 @@ const NavBar: React.FC<NavBarProps> = ({ scrollY }) => {
       : []),
   ];
 
-  const itemLabel = (item: { label: string; icon: string }) => (
+  const itemLabel = (item: { label: string; icon: string }, showIcon = true) => (
     <>
-      <i className={`fas ${item.icon} mr-2`}></i> {item.label}
+      {showIcon && <i className={`fas ${item.icon} mr-2`}></i>}
+      {item.label}
       {item.label === "Messages" && unread > 0 && (
         <span
           className="ml-2 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold leading-5 text-white"
@@ -203,7 +204,7 @@ const NavBar: React.FC<NavBarProps> = ({ scrollY }) => {
                 >
                   <Link href={item.path}>
                     <div className={`${getNavItemStyle(item.path)} ${item.label === 'Listings' ? 'bg-white/20 hover:bg-white/30' : ''}`}>
-                      {itemLabel(item)}
+                      {itemLabel(item, !user)}
                     </div>
                   </Link>
                 </motion.div>
@@ -223,7 +224,7 @@ const NavBar: React.FC<NavBarProps> = ({ scrollY }) => {
                   <Link href="/profile">
                     <div className="flex items-center space-x-2 bg-white/20 backdrop-blur-sm hover:bg-white/30 px-3 py-2 rounded-full text-white transition-all duration-300 cursor-pointer">
                       <img src={userIcon} alt="User Profile" className="w-6 h-6" />
-                      <span className="text-sm font-medium">{user.email?.split('@')[0]}</span>
+                      <span className="max-w-[6rem] truncate text-sm font-medium">{user.email?.split('@')[0]}</span>
                     </div>
                   </Link>
                 ) : (
