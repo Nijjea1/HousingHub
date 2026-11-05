@@ -8,28 +8,8 @@
       "destination": "/api"
     },
     {
-      "source": "/listings",
-      "destination": "/listings/index.html"
-    },
-    {
-      "source": "/about",
-      "destination": "/about/index.html"
-    },
-    {
-      "source": "/resources",
-      "destination": "/resources/index.html"
-    },
-    {
-      "source": "/signin",
-      "destination": "/signin/index.html"
-    },
-    {
-      "source": "/signup",
-      "destination": "/signup/index.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/app.html"
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
