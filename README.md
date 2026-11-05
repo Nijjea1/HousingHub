@@ -2,7 +2,7 @@
 
 Student housing for Canadian universities, launching at McMaster. Landlords post rentals near campus; students search by distance from campus, filter, save places and message landlords.
 
-**Live site:** LIVE_URL
+**Live site:** https://letmeknock.vercel.app (demo mode: the hosted database is not connected, so the site runs on sample data in your browser and nothing is shared between visitors. Run it locally for the full stack.)
 
 ## Try it in a minute
 
