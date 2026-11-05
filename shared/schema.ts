@@ -403,3 +403,87 @@ export const startConversationSchema = messageInputSchema.extend({
   listingId: z.string().uuid("Not a valid listing id"),
 });
 export type StartConversationInput = z.infer<typeof startConversationSchema>;
+
+// Favorites: the private note and collection on a saved listing.
+
+export const favoriteInputSchema = z.object({
+  note: z.string().trim().max(500, "Notes can be at most 500 characters").nullable().default(null),
+  collectionName: z.string().trim().min(1).max(100, "Collection names can be at most 100 characters").nullable().default(null),
+});
+export type FavoriteInput = z.infer<typeof favoriteInputSchema>;
+
+// Saved searches: a name and the search (without a result limit) it stands for.
+
+export const savedSearchInputSchema = z.object({
+  name: z.string().trim().min(1, "Name this search").max(80, "Names can be at most 80 characters"),
+  params: searchParamsSchema.omit({ limit: true }),
+});
+export type SavedSearchInput = z.infer<typeof savedSearchInputSchema>;
+
+export const savedSearchSchema = savedSearchInputSchema.extend({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+  createdAt: z.string(),
+});
+export type SavedSearch = z.infer<typeof savedSearchSchema>;
+
+// Viewing requests
+
+export const VIEWING_STATUSES = ["pending", "accepted", "declined"] as const;
+export type ViewingStatus = (typeof VIEWING_STATUSES)[number];
+
+export const viewingRequestInputSchema = z.object({
+  proposedAt: z.string().datetime({ offset: true, message: "Pick a date and time" }),
+  message: z.string().trim().max(500, "Keep it under 500 characters").nullable().default(null),
+});
+export type ViewingRequestInput = z.infer<typeof viewingRequestInputSchema>;
+
+export const viewingStatusUpdateSchema = z.object({ status: z.enum(["accepted", "declined"]) });
+
+export const viewingRequestSchema = z.object({
+  id: z.string().uuid(),
+  listingId: z.string().uuid(),
+  studentId: z.string().uuid(),
+  landlordId: z.string().uuid(),
+  proposedAt: z.string(),
+  message: z.string().nullable(),
+  status: z.enum(VIEWING_STATUSES),
+  createdAt: z.string(),
+});
+export type ViewingRequest = z.infer<typeof viewingRequestSchema>;
+
+// Reviews
+
+export const MAX_REVIEW_LENGTH = 1000;
+
+export const reviewInputSchema = z.object({
+  rating: z.number().int("Pick a whole number of stars").min(1, "Pick 1 to 5 stars").max(5, "Pick 1 to 5 stars"),
+  body: z.string().trim().min(1, "Write a short review").max(MAX_REVIEW_LENGTH, `Reviews can be at most ${MAX_REVIEW_LENGTH} characters`),
+});
+export type ReviewInput = z.infer<typeof reviewInputSchema>;
+
+export const reviewSchema = reviewInputSchema.extend({
+  id: z.string().uuid(),
+  listingId: z.string().uuid(),
+  authorId: z.string().uuid(),
+  authorName: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type Review = z.infer<typeof reviewSchema>;
+
+// Commute from a listing to its campus
+
+export const COMMUTE_MODES = ["walk", "bike", "drive", "transit"] as const;
+export type CommuteMode = (typeof COMMUTE_MODES)[number];
+
+export const commuteQuerySchema = z.object({ mode: z.enum(COMMUTE_MODES) });
+
+export const commuteSchema = z.object({
+  listingId: z.string().uuid(),
+  mode: z.enum(COMMUTE_MODES),
+  minutes: z.number().min(0),
+  distanceM: z.number().int().min(0).nullable(),
+  /** Encoded polyline (precision 5) of the route, when the provider returns one. */
+  geometry: z.string().nullable(),
+});
+export type Commute = z.infer<typeof commuteSchema>;

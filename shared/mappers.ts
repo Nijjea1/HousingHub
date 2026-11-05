@@ -1,4 +1,6 @@
 import type {
+  Commute,
+  CommuteMode,
   Conversation,
   Favorite,
   InboxEntry,
@@ -9,12 +11,16 @@ import type {
   Profile,
   PropertyType,
   Province,
-  SearchParams,
+  Review,
   SavedListing,
+  SavedSearch,
+  SearchParams,
   SearchResult,
   SignUpInput,
   University,
   UserRole,
+  ViewingRequest,
+  ViewingStatus,
 } from "./schema.js";
 
 // Row shapes as PostgREST returns them. Postgres numeric/decimal columns
@@ -374,4 +380,103 @@ export function inboxEntryFromRow(row: InboxRow): InboxEntry {
     lastMessageAt: row.last_message_at,
     unreadCount: row.unread_count,
   };
+}
+
+// Rows from the server's Drizzle queries arrive camelCase, with timestamps as Postgres text
+// ("2026-11-03 21:00:00+00") and numerics as strings. These turn them into the API shapes.
+
+/** Postgres timestamptz text (or an ISO string) to an ISO 8601 string. */
+export function isoTime(value: string): string {
+  const iso = value.includes("T") ? value : value.replace(" ", "T");
+  return new Date(/[+-]\d\d$/.test(iso) ? `${iso}:00` : iso).toISOString();
+}
+
+export interface SavedSearchRecord {
+  id: string;
+  userId: string;
+  name: string;
+  params: unknown;
+  createdAt: string;
+}
+
+export function savedSearchFromRecord(row: SavedSearchRecord): SavedSearch {
+  return { id: row.id, userId: row.userId, name: row.name, params: row.params as SavedSearch["params"], createdAt: isoTime(row.createdAt) };
+}
+
+export interface ViewingRequestRecord {
+  id: string;
+  listingId: string;
+  studentId: string;
+  landlordId: string;
+  proposedAt: string;
+  message: string | null;
+  status: string;
+  createdAt: string;
+}
+
+export function viewingRequestFromRecord(row: ViewingRequestRecord): ViewingRequest {
+  return {
+    id: row.id,
+    listingId: row.listingId,
+    studentId: row.studentId,
+    landlordId: row.landlordId,
+    proposedAt: isoTime(row.proposedAt),
+    message: row.message,
+    status: row.status as ViewingStatus,
+    createdAt: isoTime(row.createdAt),
+  };
+}
+
+export interface ReviewRecord {
+  id: string;
+  listingId: string;
+  authorId: string;
+  authorName: string | null;
+  rating: number;
+  body: string;
+  createdAt: string;
+}
+
+export function reviewFromRecord(row: ReviewRecord): Review {
+  return { ...row, createdAt: isoTime(row.createdAt) };
+}
+
+export interface MessageRecord {
+  id: string;
+  conversationId: string | null;
+  senderId: string;
+  receiverId: string;
+  listingId: string;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export function messageFromRecord(row: MessageRecord & { conversationId: string }): Message {
+  return { ...row, createdAt: isoTime(row.createdAt) };
+}
+
+export interface CommuteRecord {
+  listingId: string;
+  mode: string;
+  minutes: string;
+  distanceM: number | null;
+  geometry: string | null;
+}
+
+export function commuteFromRecord(row: CommuteRecord): Commute {
+  return { listingId: row.listingId, mode: row.mode as CommuteMode, minutes: num(row.minutes), distanceM: row.distanceM, geometry: row.geometry };
+}
+
+export interface FavoriteRecord {
+  id: string;
+  userId: string;
+  listingId: string;
+  note: string | null;
+  collectionName: string | null;
+  createdAt: string;
+}
+
+export function favoriteFromRecord(row: FavoriteRecord): Favorite {
+  return { ...row, createdAt: isoTime(row.createdAt) };
 }
