@@ -37,6 +37,7 @@
     "client/src",
     "shared",
     "server",
+    "realtime",
     "scripts",
     "api"
   ],
