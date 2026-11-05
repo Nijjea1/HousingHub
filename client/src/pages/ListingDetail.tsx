@@ -2,17 +2,22 @@ import { Suspense, lazy, useState } from 'react';
 import { Link, useRoute } from 'wouter';
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Heart, MapPin } from 'lucide-react';
 import ListingCover from '@/components/listings/ListingCover';
+import CommuteSection from '@/components/listings/CommuteSection';
+import Reviews from '@/components/listings/Reviews';
+import ViewingRequest from '@/components/listings/ViewingRequest';
 import MessageLandlord from '@/components/messages/MessageLandlord';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCampus } from '@/hooks/use-campus';
+import { useCommutes } from '@/hooks/use-commute';
 import { useListing } from '@/hooks/use-listings';
 import { useSaveListing } from '@/hooks/use-save-listing';
 import { useProfile } from '@/hooks/use-user-profile';
 import { formatDistance } from '@/lib/map';
+import { decodePolyline } from '@shared/polyline';
 import { haversineKm } from '@shared/search';
-import { PROPERTY_TYPE_LABELS, PROVINCES, type Listing } from '@shared/schema';
+import { PROPERTY_TYPE_LABELS, PROVINCES, type CommuteMode, type Listing } from '@shared/schema';
 
 const MiniMap = lazy(() => import('@/components/listings/MiniMap'));
 
@@ -97,6 +102,8 @@ const ListingDetail = () => {
   const { data: listing, isLoading, error, refetch } = useListing(params?.id);
   const { data: landlord } = useProfile(listing?.userId);
   const { saved, toggle } = useSaveListing(params?.id ?? '');
+  const commutes = useCommutes(listing?.id);
+  const [commuteMode, setCommuteMode] = useState<CommuteMode>('walk');
 
   if (isLoading) return <DetailSkeleton />;
 
@@ -127,6 +134,8 @@ const ListingDetail = () => {
   const distanceKm = place && campus ? haversineKm(place, campus) : null;
   const fullAddress = `${listing.address}, ${listing.city}, ${PROVINCES[listing.province] ?? listing.province} ${listing.postalCode}`;
   const isOwner = user?.id === listing.userId;
+  const routeGeometry = commutes.byMode[commuteMode]?.geometry;
+  const route = routeGeometry ? decodePolyline(routeGeometry) : undefined;
 
   const facts: Array<[string, React.ReactNode]> = [
     ['Rent', `$${listing.price.toLocaleString('en-CA')} a month`],
@@ -162,6 +171,7 @@ const ListingDetail = () => {
       ) : (
         <MessageLandlord listingId={listing.id} userId={user?.id} />
       )}
+      {!isOwner && user && <ViewingRequest listingId={listing.id} />}
       <Button variant="outline" className="w-full" onClick={toggle} aria-pressed={saved}>
         <Heart className={`mr-2 h-4 w-4 ${saved ? 'fill-primary text-primary' : ''}`} aria-hidden="true" />
         {saved ? 'Saved' : 'Save'}
@@ -265,10 +275,21 @@ const ListingDetail = () => {
             <h2 id="location-heading" className="mb-3 text-xl font-semibold">
               Where it is
             </h2>
+            {campus && !commutes.unavailable && (
+              <div className="mb-5">
+                <CommuteSection
+                  campusName={campus.shortName}
+                  byMode={commutes.byMode}
+                  pending={commutes.pending}
+                  selected={commuteMode}
+                  onSelect={setCommuteMode}
+                />
+              </div>
+            )}
             {place ? (
               <div className="relative z-0 aspect-[16/9] overflow-hidden rounded-lg border bg-muted sm:aspect-[2/1]">
                 <Suspense fallback={null}>
-                  <MiniMap place={place} price={listing.price} campus={campus} />
+                  <MiniMap place={place} price={listing.price} campus={campus} route={route} />
                 </Suspense>
               </div>
             ) : (
@@ -285,6 +306,8 @@ const ListingDetail = () => {
               </>
             )}
           </section>
+
+          <Reviews listingId={listing.id} userId={user?.id} isOwner={isOwner} />
         </div>
 
         <aside id="contact" className="scroll-mt-20 lg:sticky lg:top-20 lg:self-start" aria-label="Contact">

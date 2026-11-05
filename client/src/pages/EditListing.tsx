@@ -1,56 +1,48 @@
-import { useEffect } from 'react';
-import { useParams, useLocation } from 'wouter';
-import { useAuth } from '@/contexts/AuthContext';
-import { useListing } from '@/hooks/use-listings';
+import { Link, useParams } from 'wouter';
+import type { User } from '@supabase/supabase-js';
 import CreateListingForm from '@/components/listings/CreateListingForm';
-import { toast } from 'sonner';
+import RequireAuth, { PageSpinner } from '@/components/RequireAuth';
+import { Button } from '@/components/ui/button';
+import { useListing } from '@/hooks/use-listings';
 
-const EditListing = () => {
-  const { id } = useParams();
-  const [, setLocation] = useLocation();
-  const { user } = useAuth();
-  const { data: listing, isLoading } = useListing(id);
+const Message = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  <div className="page py-16 text-center">
+    <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+    {children}
+  </div>
+);
 
-  useEffect(() => {
-    if (!user) {
-      setLocation('/signin');
-      return;
-    }
+function EditListingPage({ user }: { user: User }) {
+  const { id } = useParams<{ id: string }>();
+  const { data: listing, isLoading, error, refetch } = useListing(id);
 
-    if (!isLoading && !listing) {
-      toast.error('Listing not found');
-      setLocation('/profile/my-listings');
-    }
-  }, [user, listing, isLoading, setLocation]);
-
-  if (!user) {
-    return null;
-  }
-
-  if (isLoading) {
+  if (isLoading) return <PageSpinner label="Loading listing" />;
+  if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
+      <Message title="Couldn't load this listing">
+        <p className="text-muted-foreground mb-6">{error.message}</p>
+        <Button onClick={() => refetch()}>Try again</Button>
+      </Message>
+    );
+  }
+  if (!listing || listing.userId !== user.id) {
+    return (
+      <Message title={listing ? "This isn't your listing" : 'Listing not found'}>
+        <p className="text-muted-foreground mb-6">You can only edit listings you posted.</p>
+        <Button asChild>
+          <Link href="/profile/my-listings">Go to my listings</Link>
+        </Button>
+      </Message>
     );
   }
 
-  if (!listing) {
-    return null;
-  }
-
-  if (listing.userId !== user.id) {
-    toast.error('You do not have permission to edit this listing');
-    setLocation('/profile/my-listings');
-    return null;
-  }
-
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Edit Listing</h1>
+    <div className="page py-8 md:py-12">
       <CreateListingForm initialData={listing} mode="edit" />
     </div>
   );
-};
+}
 
-export default EditListing; 
+const EditListing = () => <RequireAuth reason="edit your listing">{(user) => <EditListingPage user={user} />}</RequireAuth>;
+
+export default EditListing;

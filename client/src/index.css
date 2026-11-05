@@ -24,6 +24,15 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221 83% 53%;
     --radius: 0.5rem;
+    --success: 142 40% 32%;
+
+    /* Placeholder tiles for listings without photos. */
+    --tone-1: 214 60% 90%;
+    --tone-2: 160 30% 88%;
+    --tone-3: 250 40% 91%;
+    --tone-4: 40 50% 88%;
+    --tone-5: 200 30% 88%;
+    --tone-ink: 222 30% 22%;
   }
 
   body {
@@ -32,6 +41,15 @@
 }
 
 @layer components {
+  /* Small uppercase label above a section or a fact. */
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground;
+  }
+
+  .page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
+  }
+
   .animate-fade-in {
     @apply opacity-0 animate-[fadeIn_0.5s_ease-in-out_forwards];
   }
@@ -63,4 +81,54 @@
 @keyframes slideUp {
   0% { transform: translateY(20px); opacity: 0; }
   100% { transform: translateY(0); opacity: 1; }
+}
+
+/* Map markers (client/src/pages/Map.tsx) */
+.map-price {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  border: 1px solid hsl(var(--border));
+}
+
+.map-price-selected {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+
+.map-campus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  background: #7a003c;
+  color: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+/* Marker clusters in the app's blue instead of the plugin's default greens and yellows. */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background-color: hsl(var(--primary) / 0.25) !important;
+}
+
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }

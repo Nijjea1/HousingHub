@@ -1,8 +1,11 @@
 import { useEffect } from 'react';
+import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { connectSocket, connectedSocket, disconnectSocket } from '@/lib/socket';
 import { supabase } from '@/lib/supabase';
 import { inboxEntryFromRow, messageFromRow, type InboxRow, type MessageRow } from '@shared/mappers';
+import type { Ack } from '@shared/realtime';
 import type { Conversation, InboxEntry, Message } from '@shared/schema';
 
 const messageKeys = {
@@ -73,6 +76,7 @@ function appendToThread(queryClient: ReturnType<typeof useQueryClient>, message:
  */
 export function useMessageEvents(userId: string | undefined) {
   const queryClient = useQueryClient();
+  useSocketEvents(userId);
 
   useEffect(() => {
     if (!userId) return;
@@ -93,6 +97,58 @@ export function useMessageEvents(userId: string | undefined) {
   }, [userId, queryClient]);
 }
 
+/**
+ * The Socket.IO connection, when the app is configured with one. The service puts each conversation in a room,
+ * so these events only ever describe the user's own conversations.
+ */
+function useSocketEvents(userId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId) return;
+    const socket = connectSocket();
+    if (!socket) return;
+
+    socket.on('message:new', (message) => {
+      appendToThread(queryClient, message);
+      queryClient.invalidateQueries({ queryKey: messageKeys.inbox(userId) });
+    });
+    // Someone read our messages: show the receipt without waiting for a refetch.
+    socket.on('message:read', ({ conversationId, readerId, messageIds }) => {
+      if (readerId === userId) return;
+      queryClient.setQueryData<Message[]>(messageKeys.thread(conversationId), (current) =>
+        current?.map((m) => (messageIds.includes(m.id) ? { ...m, isRead: true } : m)),
+      );
+    });
+    socket.on('unread:update', ({ total }) => {
+      queryClient.setQueryData(messageKeys.unread(userId), total);
+      queryClient.invalidateQueries({ queryKey: messageKeys.inbox(userId) });
+    });
+    socket.on('notification', ({ type }) => {
+      queryClient.invalidateQueries({ queryKey: ['viewings'] });
+      toast(type === 'viewing:requested' ? 'New viewing request' : 'A landlord answered your viewing request');
+    });
+
+    return () => {
+      disconnectSocket();
+    };
+  }, [userId, queryClient]);
+}
+
+const SEND_TIMEOUT_MS = 8000;
+
+/** Emits an event and waits for the service's acknowledgement. */
+function emitWithAck<T extends object>(send: (done: (r: Ack<T>) => void) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('The message service did not answer')), SEND_TIMEOUT_MS);
+    send((result) => {
+      window.clearTimeout(timer);
+      if (result.ok) resolve(result);
+      else reject(new Error(result.error));
+    });
+  });
+}
+
 export function useMessageMutations(userId: string | undefined) {
   const queryClient = useQueryClient();
   const refreshInbox = () => queryClient.invalidateQueries({ queryKey: messageKeys.all });
@@ -100,16 +156,27 @@ export function useMessageMutations(userId: string | undefined) {
   const startConversation = useMutation({
     mutationFn: (input: { listingId: string; content: string }) =>
       apiFetch<{ conversation: Conversation; message: Message }>('/conversations', { method: 'POST', body: input }),
-    onSuccess: ({ message }) => {
+    onSuccess: ({ conversation, message }) => {
       appendToThread(queryClient, message);
       refreshInbox();
+      // Join the new conversation's room so replies arrive live.
+      connectedSocket()?.emit('conversation:join', { conversationId: conversation.id }, () => undefined);
     },
   });
 
   const sendMessage = useMutation({
-    mutationFn: async ({ conversationId, content }: { conversationId: string; content: string }) =>
-      (await apiFetch<{ message: Message }>(`/conversations/${conversationId}/messages`, { method: 'POST', body: { content } }))
-        .message,
+    mutationFn: async ({ conversationId, content }: { conversationId: string; content: string }) => {
+      // Through the socket when it is open (the service pushes it to the other person), else through the API.
+      const socket = connectedSocket();
+      if (socket) {
+        const { message } = await emitWithAck<{ message: Message }>((done) =>
+          socket.emit('message:send', { conversationId, content }, done),
+        );
+        return message;
+      }
+      return (await apiFetch<{ message: Message }>(`/conversations/${conversationId}/messages`, { method: 'POST', body: { content } }))
+        .message;
+    },
     onSuccess: (message) => {
       appendToThread(queryClient, message);
       queryClient.invalidateQueries({ queryKey: messageKeys.inbox(userId ?? '') });
@@ -119,6 +186,12 @@ export function useMessageMutations(userId: string | undefined) {
   /** Marks everything addressed to the user in this conversation as read. The column grant only allows is_read. */
   const markRead = useMutation({
     mutationFn: async (conversationId: string) => {
+      const socket = connectedSocket();
+      if (socket) {
+        // The service marks them read and sends the sender a read receipt.
+        await emitWithAck<{ messageIds: string[] }>((done) => socket.emit('message:read', { conversationId }, done));
+        return;
+      }
       const { error } = await supabase
         .from('messages')
         .update({ is_read: true })

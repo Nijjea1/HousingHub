@@ -11,6 +11,15 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       colors: {
+        success: "hsl(var(--success))",
+        tone: {
+          1: "hsl(var(--tone-1))",
+          2: "hsl(var(--tone-2))",
+          3: "hsl(var(--tone-3))",
+          4: "hsl(var(--tone-4))",
+          5: "hsl(var(--tone-5))",
+          ink: "hsl(var(--tone-ink))",
+        },
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {

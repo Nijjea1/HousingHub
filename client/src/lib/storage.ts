@@ -33,3 +33,24 @@ export async function uploadImage(file: File, bucket: string, userId: string): P
 
   return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
+
+/** The file path inside `bucket` behind one of our public URLs, or null for any other URL. */
+export function storagePath(url: string, bucket: string): string | null {
+  const marker = `/storage/v1/object/public/${bucket}/`;
+  const at = url.indexOf(marker);
+  return at === -1 ? null : decodeURIComponent(url.slice(at + marker.length));
+}
+
+/**
+ * Deletes the files behind these URLs once nothing points at them. Best effort: the storage
+ * policies only let users delete their own files, and a leftover file costs storage, not data.
+ */
+export async function removeImages(urls: string[], bucket: string): Promise<void> {
+  const paths = urls.map((url) => storagePath(url, bucket)).filter((p): p is string => p !== null);
+  if (paths.length === 0) return;
+  try {
+    await supabase.storage.from(bucket).remove(paths);
+  } catch {
+    // Ignored on purpose, see above.
+  }
+}

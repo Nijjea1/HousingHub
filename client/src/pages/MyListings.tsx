@@ -1,231 +1,204 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
-import { motion } from 'framer-motion';
-import { useAuth } from '@/contexts/AuthContext';
-import { useUserListings, useListingMutations } from '@/hooks/use-listings';
-import { PROPERTY_TYPE_LABELS } from '@shared/schema';
+import { toast } from 'sonner';
+import type { User } from '@supabase/supabase-js';
+import { Plus, TriangleAlert } from 'lucide-react';
+import ListingCover from '@/components/listings/ListingCover';
+import { listingFacts } from '@/components/listings/ListingCard';
+import RequireAuth from '@/components/RequireAuth';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner';
+import { useListingMutations, useUserListings } from '@/hooks/use-listings';
+import { LISTING_IMAGES_BUCKET, removeImages } from '@/lib/storage';
+import type { Listing } from '@shared/schema';
 
-const MyListings = () => {
-  const { user } = useAuth();
-  const { data: userListings = [] } = useUserListings(user?.id);
+type SortOption = 'newest' | 'oldest' | 'price-low' | 'price-high';
+
+const compare: Record<SortOption, (a: Listing, b: Listing) => number> = {
+  newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
+  oldest: (a, b) => a.createdAt.localeCompare(b.createdAt),
+  'price-low': (a, b) => a.price - b.price,
+  'price-high': (a, b) => b.price - a.price,
+};
+
+function MyListingsPage({ user }: { user: User }) {
+  const { data: listings, isLoading, error, refetch } = useUserListings(user.id);
   const { deleteListing } = useListingMutations();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'price-low' | 'price-high'>('newest');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [toDelete, setToDelete] = useState<Listing | null>(null);
 
-  // useUserListings already scopes to this user, so we only filter by the search query
-  const myListings = userListings.filter(listing =>
-    searchQuery
-      ? listing.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        listing.description.toLowerCase().includes(searchQuery.toLowerCase())
-      : true
-  );
-
-  // Sort listings
-  const sortedListings = [...myListings].sort((a, b) => {
-    const aDate = new Date(String(a.createdAt || '1970-01-01')).getTime();
-    const bDate = new Date(String(b.createdAt || '1970-01-01')).getTime();
-
-    switch (sortBy) {
-      case 'price-low':
-        return a.price - b.price;
-      case 'price-high':
-        return b.price - a.price;
-      case 'newest':
-        return bDate - aDate;
-      case 'oldest':
-        return aDate - bDate;
-      default:
-        return 0;
-    }
-  });
-
-  const handleDelete = async (listingId: string) => {
-    if (!window.confirm('Are you sure you want to delete this listing?')) {
-      return;
-    }
-
-    try {
-      await deleteListing.mutateAsync(listingId);
-      toast.success('Listing deleted successfully');
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to delete listing');
-    }
-  };
-
-  const handleSortChange = (value: typeof sortBy) => {
-    setSortBy(value);
-  };
-
-  if (!user) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">Please sign in</h2>
-          <p className="text-gray-600 mb-4">You need to be signed in to view your listings</p>
-          <Link href="/signin">
-            <Button>Sign In</Button>
-          </Link>
+      <div className="page py-8 md:py-10" role="status" aria-label="Loading your listings">
+        <Skeleton className="mb-8 h-10 w-56" />
+        <div className="divide-y rounded-lg border">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex gap-4 p-4">
+              <Skeleton className="h-20 w-28" />
+              <div className="flex-1 space-y-2 py-1">
+                <Skeleton className="h-5 w-1/2" />
+                <Skeleton className="h-4 w-1/3" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
+  const q = query.trim().toLowerCase();
+  const shown = (listings ?? [])
+    .filter((l) => !q || l.title.toLowerCase().includes(q) || l.address.toLowerCase().includes(q))
+    .sort(compare[sortBy]);
+
+  const confirmDelete = async () => {
+    if (!toDelete) return;
+    try {
+      await deleteListing.mutateAsync(toDelete.id);
+      void removeImages(toDelete.images, LISTING_IMAGES_BUCKET);
+      toast.success('Listing deleted');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not delete the listing');
+    } finally {
+      setToDelete(null);
+    }
+  };
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">My Listings</h1>
-        <Link href="/create-listing">
-          <Button>
-            <i className="fas fa-plus mr-2"></i> Create New Listing
-          </Button>
-        </Link>
+    <div className="page py-8 md:py-10">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="eyebrow mb-2">Landlord</p>
+          <h1 className="text-3xl font-semibold">My listings</h1>
+        </div>
+        <Button asChild>
+          <Link href="/create-listing">
+            <Plus className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            New listing
+          </Link>
+        </Button>
       </div>
 
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
-        <div className="w-full sm:w-auto flex-1">
-          <Input
-            type="text"
-            placeholder="Search your listings..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      {error ? (
+        <div className="rounded-lg border bg-card p-8 text-center" role="alert">
+          <h2 className="mb-2 text-xl font-semibold">Couldn't load your listings</h2>
+          <p className="mb-4 text-muted-foreground">{error.message}</p>
+          <Button onClick={() => refetch()}>Try again</Button>
         </div>
-        <div className="flex items-center gap-4">
-          <Select value={sortBy} onValueChange={handleSortChange}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="newest">Newest First</SelectItem>
-              <SelectItem value="oldest">Oldest First</SelectItem>
-              <SelectItem value="price-low">Price: Low to High</SelectItem>
-              <SelectItem value="price-high">Price: High to Low</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'outline'}
-              onClick={() => setViewMode('grid')}
-            >
-              <i className="fas fa-th-large"></i>
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'outline'}
-              onClick={() => setViewMode('list')}
-            >
-              <i className="fas fa-list"></i>
-            </Button>
+      ) : listings && listings.length > 0 ? (
+        <>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+            <Input
+              className="bg-card sm:max-w-sm"
+              placeholder="Search by title or address"
+              aria-label="Search your listings"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Select value={sortBy} onValueChange={(v: SortOption) => setSortBy(v)}>
+              <SelectTrigger className="w-[200px] bg-card" aria-label="Sort by">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+                <SelectItem value="price-low">Price: low to high</SelectItem>
+                <SelectItem value="price-high">Price: high to low</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="self-center text-sm text-muted-foreground tabular-nums sm:ml-auto">
+              {listings.length} {listings.length === 1 ? 'listing' : 'listings'}
+            </p>
           </div>
-        </div>
-      </div>
 
-      {sortedListings.length > 0 ? (
-        <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-6'}>
-          {sortedListings.map((listing, index) => (
-            <motion.div
-              key={listing.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: index * 0.1 }}
-              className="bg-white rounded-lg shadow-md overflow-hidden"
-            >
-              <div className="relative">
-                {listing.images[0] && (
-                  <img
-                    src={listing.images[0]}
-                    alt={listing.title}
-                    className="w-full h-48 object-cover"
-                  />
-                )}
-                <div className="absolute top-4 right-4 flex gap-2">
-                  <Link href={`/edit-listing/${listing.id}`}>
-                    <Button variant="outline" size="sm">
-                      <i className="fas fa-edit"></i>
-                    </Button>
-                  </Link>
-                  <Button 
-                    variant="destructive" 
+          {shown.length === 0 && <p className="py-6 text-muted-foreground">No listings match "{query}".</p>}
+          <ul className="divide-y rounded-lg border bg-card">
+            {shown.map((listing) => (
+              <li key={listing.id} className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
+                <div className="h-20 w-full shrink-0 overflow-hidden rounded-md sm:w-28">
+                  <ListingCover listing={listing} size="thumb" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`/listings/${listing.id}`} className="font-medium hover:text-primary">
+                      {listing.title}
+                    </Link>
+                    {!listing.isAvailable && (
+                      <span className="rounded border px-1.5 py-0.5 text-xs text-muted-foreground">Hidden from search</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {listing.address}, {listing.city} · {listingFacts(listing)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Posted {new Date(listing.createdAt).toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                  {listing.latitude === null && (
+                    <p className="flex items-start gap-1.5 text-sm text-destructive">
+                      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      We couldn't find this address on the map, so it won't appear in distance searches. Check the street name and save again.
+                    </p>
+                  )}
+                </div>
+                <p className="shrink-0 font-semibold tabular-nums sm:w-24 sm:text-right">${listing.price.toLocaleString('en-CA')}/mo</p>
+                <div className="flex shrink-0 gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/edit-listing/${listing.id}`}>Edit</Link>
+                  </Button>
+                  <Button
+                    variant="ghost"
                     size="sm"
-                    onClick={() => handleDelete(listing.id)}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setToDelete(listing)}
                   >
-                    <i className="fas fa-trash-alt"></i>
+                    Delete
                   </Button>
                 </div>
-                <div className="absolute bottom-4 left-4">
-                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800">
-                    {PROPERTY_TYPE_LABELS[listing.propertyType]}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-lg font-semibold text-gray-900">{listing.title}</h3>
-                  <p className="text-lg font-bold text-primary-600">${listing.price}/mo</p>
-                </div>
-                
-                <p className="text-sm text-gray-600 mb-4">{listing.description}</p>
-
-                <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-                  <span>{listing.bedrooms} {listing.bedrooms === 1 ? 'bed' : 'beds'}</span>
-                  <span>•</span>
-                  <span>{listing.bathrooms} {listing.bathrooms === 1 ? 'bath' : 'baths'}</span>
-                  {listing.squareFeet && (
-                    <>
-                      <span>•</span>
-                      <span>{listing.squareFeet} sq ft</span>
-                    </>
-                  )}
-                </div>
-                
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {listing.amenities.slice(0, 4).map((amenity) => (
-                    <span
-                      key={amenity}
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
-                    >
-                      {amenity}
-                    </span>
-                  ))}
-                  {listing.amenities.length > 4 && (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                      +{listing.amenities.length - 4} more
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <Link href={`/listings/${listing.id}`}>
-                    <Button variant="outline">View Details</Button>
-                  </Link>
-                  <span className="text-sm text-gray-500">
-                    Posted {new Date(String(listing.createdAt || '1970-01-01')).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
-        <div className="text-center py-12">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i className="fas fa-home text-2xl text-gray-400"></i>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No listings yet</h3>
-          <p className="text-gray-500 mb-4">Create your first listing to start renting out your property</p>
-          <Link href="/create-listing">
-            <Button>Create Your First Listing</Button>
-          </Link>
+        <div className="rounded-lg border border-dashed px-6 py-16 text-center">
+          <h2 className="mb-2 text-xl font-semibold">No listings yet</h2>
+          <p className="mb-5 text-muted-foreground">Post your first place to start hearing from students.</p>
+          <Button asChild>
+            <Link href="/create-listing">Post a listing</Link>
+          </Button>
         </div>
       )}
+
+      <AlertDialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this listing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{toDelete?.title}" and its conversations will be removed. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={confirmDelete}>
+              Delete listing
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
-};
+}
 
-export default MyListings; 
+const MyListings = () => <RequireAuth reason="manage your listings">{(user) => <MyListingsPage user={user} />}</RequireAuth>;
+
+export default MyListings;
