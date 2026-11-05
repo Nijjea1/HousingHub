@@ -1,18 +1,15 @@
+import { demoApi } from '@/demo/api';
+import { DEMO } from '@/demo/flag';
+import { ApiError } from '@/lib/api-error';
 import { supabase } from '@/lib/supabase';
 
-/** An error response from our API, with per-field messages when validation failed. */
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public fields?: Record<string, string[] | undefined>,
-  ) {
-    super(message);
-  }
-}
+export { ApiError };
 
 /** Calls /api with the signed-in user's token. Throws ApiError on any non-2xx response. */
 export async function apiFetch<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  // Demo mode answers from the browser, so there is no server to reach.
+  if (DEMO) return demoApi<T>(path, options);
+
   const method = options.method ?? 'GET';
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;

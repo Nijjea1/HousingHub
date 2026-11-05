@@ -1,9 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { DEMO } from '@/demo/flag';
+import { demoSupabase } from '@/demo/supabase';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+// Demo mode needs no Supabase at all (see client/src/demo).
+export const isSupabaseConfigured = DEMO || Boolean(supabaseUrl && supabaseAnonKey);
 
 if (!isSupabaseConfigured) {
   console.error(
@@ -13,14 +16,12 @@ if (!isSupabaseConfigured) {
 
 // With missing env vars every request fails, and pages show their error state
 // instead of silently rendering placeholder data.
-export const supabase = createClient(
-  supabaseUrl ?? 'http://supabase-not-configured.invalid',
-  supabaseAnonKey ?? 'missing-anon-key',
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  }
-);
+export const supabase: SupabaseClient = DEMO
+  ? (demoSupabase as unknown as SupabaseClient)
+  : createClient(supabaseUrl ?? 'http://supabase-not-configured.invalid', supabaseAnonKey ?? 'missing-anon-key', {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    });

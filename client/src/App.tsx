@@ -7,6 +7,8 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useMessageEvents, usePresenceHeartbeat } from './hooks/use-messages';
 import NavBar from './components/NavBar';
 import Footer from './components/Footer';
+import DemoBanner from './components/DemoBanner';
+import { DEMO } from './demo/flag';
 
 // Home and the browse page load with the app; the rest load when first visited.
 import Home from './pages/Home';
@@ -88,6 +90,7 @@ const AppContent: React.FC = () => {
         </main>
         <Footer />
       </div>
+      {DEMO && <DemoBanner />}
       <Toaster position="bottom-right" />
     </FavoritesProvider>
   );

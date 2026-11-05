@@ -2,7 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 
+// Demo mode (see client/src/demo): on for builds on Vercel, where no hosted database exists, unless
+// VITE_DEMO_MODE says otherwise. Local runs and tests stay on the real backend.
+const demoMode = process.env.VITE_DEMO_MODE ?? (process.env.VERCEL ? "true" : "false");
+
 export default defineConfig({
+  define: {
+    "import.meta.env.VITE_DEMO_MODE": JSON.stringify(demoMode),
+  },
   plugins: [react()],
   resolve: {
     alias: {
